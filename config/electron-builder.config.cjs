@@ -309,6 +309,10 @@ module.exports = {
         to: 'bin/orca.exe'
       },
       {
+        from: 'native/windows-foreground-permission/.build/windows-foreground-permission.node',
+        to: 'bin/windows-foreground-permission.node'
+      },
+      {
         from: 'node_modules/agent-browser/bin/agent-browser-win32-x64.exe',
         to: 'agent-browser-win32-x64.exe'
       },
@@ -332,9 +336,10 @@ module.exports = {
   portable: {
     artifactName: 'orca-windows-portable.${ext}',
     requestExecutionLevel: 'user',
-    // Why: every launch needs a unique extraction directory so concurrent
-    // portable instances cannot remove or overwrite one another's runtime.
-    unpackDirName: false
+    // Why: direct NSIS extraction avoids staging and copying a 630 MB 7z payload before launch.
+    useZip: true,
+    // Why: electron-builder 26.15 maps true (not false) to its per-launch $PLUGINSDIR.
+    unpackDirName: true
   },
   mac: {
     icon: 'resources/build/icon.icns',

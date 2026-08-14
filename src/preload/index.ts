@@ -3549,6 +3549,8 @@ const api = {
     },
     consumePendingOpenSettings: (): Promise<boolean> =>
       ipcRenderer.invoke('ui:consumePendingOpenSettings'),
+    signalNotificationActivationReady: (): Promise<void> =>
+      ipcRenderer.invoke('ui:notificationActivationReady'),
     onOpenSetupGuide: (callback: () => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('ui:openSetupGuide', listener)

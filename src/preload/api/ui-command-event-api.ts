@@ -36,6 +36,8 @@ export type UiCommandEventApi = {
   onOpenSettings: (callback: () => void) => () => void
   /** Consumes a one-shot tray/menu-bar "open settings" intent queued before mount. */
   consumePendingOpenSettings: () => Promise<boolean>
+  /** Signals that notification navigation listeners are attached after a renderer load. */
+  signalNotificationActivationReady?: () => Promise<void>
   onOpenSetupGuide: (callback: () => void) => () => void
   onOpenFeatureTour: (callback: () => void) => () => void
   onOpenCrashReport: (callback: () => void) => () => void

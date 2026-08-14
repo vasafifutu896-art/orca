@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   build:
-    name: Build Windows portable EXE
+    name: Build Windows portable artifacts
     runs-on: windows-2022
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       NODE_OPTIONS: --max-old-space-size=4096
 
@@ -54,8 +54,19 @@ jobs:
         run: >-
           pnpm exec vitest run --config config/vitest.config.ts
           src/main/startup/portable-profile.test.ts
+          src/main/startup/multi-instance-profile.test.ts
           src/main/startup/new-desktop-instance.test.ts
+          src/main/startup/windows-notification-activation-wiring.test.ts
+          src/main/ipc/windows-foreground-permission.test.ts
+          src/main/ipc/windows-notification-activation.test.ts
+          src/main/ipc/notification-window-activation.test.ts
+          src/main/ipc/notifications.test.ts
+          src/main/ipc/register-core-handlers.test.ts
           src/main/daemon/daemon-host-relocation.test.ts
+          src/renderer/src/hooks/useIpcEvents.test.ts
+          src/renderer/src/hooks/use-notification-activation-ready.test.ts
+          config/scripts/build-windows-foreground-permission.test.mjs
+          config/scripts/electron-builder-native-rebuild.test.mjs
           config/scripts/electron-builder-config.test.mjs
 
       - name: Typecheck
@@ -66,27 +77,130 @@ jobs:
           ORCA_REUSE_PREPARED_NATIVE_RUNTIME: '1'
         run: pnpm run build:win:portable
 
-      - name: Verify artifact and checksum
+      - name: Verify one-pass portable layout
         shell: pwsh
         run: |
           $artifact = 'dist/orca-windows-portable.exe'
-          if (-not (Test-Path $artifact)) {
-            throw "Missing portable artifact: $artifact"
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          $listing = (& $sevenZip l -slt $artifact | Out-String)
+          if ($LASTEXITCODE -ne 0) {
+            throw "7-Zip could not inspect $artifact"
           }
-          $hash = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
-          $checksumPath = Join-Path $PWD "$artifact.sha256"
-          [System.IO.File]::WriteAllText(
-            $checksumPath,
-            "$hash  orca-windows-portable.exe`n",
-            [System.Text.Encoding]::ASCII
-          )
+          if ($listing -match '(?im)^Path = .*app-64\.7z$' -or $listing -match '(?im)^Path = .*nsis7z\.dll$') {
+            throw 'Portable artifact regressed to nested 7z extraction'
+          }
+          if ($listing -notmatch '(?im)^Path = .*Orca\.exe$') {
+            throw 'Portable artifact does not contain the directly embedded Orca.exe runtime'
+          }
+          if ($listing -notmatch '(?im)^Path = .*resources\\bin\\windows-foreground-permission\.node$') {
+            throw 'Portable artifact is missing the Windows foreground permission addon'
+          }
+          $nativeAddon = (Resolve-Path 'dist/win-unpacked/resources/bin/windows-foreground-permission.node').Path
+          $probe = 'const addon=require(process.argv[1]); process.stdout.write(JSON.stringify(addon.grantWindowsForegroundPermission(0)))'
+          $nodeResult = (& node -e $probe $nativeAddon | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $nodeResult -ne '{"granted":false,"inputsSent":0,"errorCode":87}') {
+            throw "Node could not load packaged foreground addon: $nodeResult"
+          }
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          try {
+            $electronResult = (& 'node_modules/electron/dist/electron.exe' -e $probe $nativeAddon | Out-String).Trim()
+            $electronExitCode = $LASTEXITCODE
+          } finally {
+            Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+          }
+          if ($electronExitCode -ne 0 -or $electronResult -ne '{"granted":false,"inputsSent":0,"errorCode":87}') {
+            throw "Electron could not load packaged foreground addon: $electronResult"
+          }
 
-      - name: Upload portable executable
+      - name: Build fast folder-portable archive
+        shell: pwsh
+        run: |
+          $source = (Resolve-Path 'dist/win-unpacked').Path
+          $marker = Join-Path $source '.orca-portable'
+          [System.IO.File]::WriteAllText($marker, "Orca folder portable`n", [System.Text.Encoding]::ASCII)
+          $archivePath = Join-Path $PWD 'dist/orca-windows-portable-folder.zip'
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            $source,
+            $archivePath,
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $false
+          )
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+            foreach ($required in @(
+              '.orca-portable',
+              'Orca.exe',
+              'resources/app.asar',
+              'resources/bin/windows-foreground-permission.node'
+            )) {
+              if ($entries -notcontains $required) {
+                throw "Folder-portable archive is missing $required"
+              }
+            }
+            if (@($entries | Where-Object { $_ -like 'win-unpacked/*' }).Count -gt 0) {
+              throw 'Folder-portable archive has an unexpected win-unpacked directory prefix'
+            }
+          } finally {
+            $archive.Dispose()
+          }
+
+      - name: Download .7 startup baseline
+        shell: pwsh
+        run: |
+          $directory = Join-Path $env:RUNNER_TEMP 'orca-portable-baseline'
+          New-Item -ItemType Directory -Path $directory -Force | Out-Null
+          $output = Join-Path $directory 'orca-windows-portable.exe'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/vasafifutu896-art/orca/releases/download/portable-1.4.178-rc.2-multi-instance.7/orca-windows-portable.exe' `
+            -OutFile $output
+          $actualHash = (Get-FileHash $output -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedHash = 'd6c94948134089c10346743e394cafe859863809a0c5759e702d227ba66b4a0e'
+          if ($actualHash -ne $expectedHash) {
+            throw "Portable baseline SHA256 mismatch: $actualHash"
+          }
+
+      - name: Compare startup to visible window
+        shell: pwsh
+        run: >-
+          ./tests/tools/benchmarks/portable-window-bench.ps1
+          -Baseline "$env:RUNNER_TEMP/orca-portable-baseline/orca-windows-portable.exe"
+          -Candidate "dist/orca-windows-portable.exe"
+          -Iterations 3
+          -TimeoutSec 90
+          -OutputPath "dist/portable-startup-benchmark.json"
+
+      - name: Verify artifacts and checksums
+        shell: pwsh
+        run: |
+          foreach ($artifact in @(
+            'dist/orca-windows-portable.exe',
+            'dist/orca-windows-portable-folder.zip'
+          )) {
+            if (-not (Test-Path $artifact)) {
+              throw "Missing portable artifact: $artifact"
+            }
+            $hash = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
+            $checksumPath = "$artifact.sha256"
+            $filename = Split-Path $artifact -Leaf
+            [System.IO.File]::WriteAllText(
+              $checksumPath,
+              "$hash  $filename`n",
+              [System.Text.Encoding]::ASCII
+            )
+          }
+
+      - name: Upload portable artifacts
         uses: actions/upload-artifact@v7
         with:
           name: orca-windows-portable-${{ github.run_id }}
           path: |
             dist/orca-windows-portable.exe
             dist/orca-windows-portable.exe.sha256
+            dist/orca-windows-portable-folder.zip
+            dist/orca-windows-portable-folder.zip.sha256
+            dist/portable-startup-benchmark.json
+          compression-level: 0
           retention-days: 30
           if-no-files-found: error

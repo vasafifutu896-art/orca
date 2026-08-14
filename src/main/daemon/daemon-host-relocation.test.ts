@@ -31,6 +31,7 @@ import {
   materializeRelocatedDaemonHost,
   pruneOldDaemonHosts
 } from './daemon-host-relocation'
+import { FOLDER_PORTABLE_MARKER } from '../startup/portable-profile'
 
 let tempDir: string
 let installDir: string
@@ -213,6 +214,16 @@ describe('materializeRelocatedDaemonHost', () => {
   it('keeps the relocated daemon inside portable userData', () => {
     process.env.PORTABLE_EXECUTABLE_DIR = dirname(installDir)
     process.env.PORTABLE_EXECUTABLE_FILE = join(dirname(installDir), 'orca-portable.exe')
+
+    const result = materializeRelocatedDaemonHost()
+    const dest = join(userDataDir, 'daemon-host', '9.9.9')
+
+    expect(result?.execPath).toBe(join(dest, 'orca-terminal-daemon.exe'))
+    expect(existsSync(join(localAppDataDir, 'Orca', 'daemon-host'))).toBe(false)
+  })
+
+  it('keeps the relocated daemon inside marked folder-portable userData', () => {
+    writeFileSync(join(installDir, FOLDER_PORTABLE_MARKER), '')
 
     const result = materializeRelocatedDaemonHost()
     const dest = join(userDataDir, 'daemon-host', '9.9.9')

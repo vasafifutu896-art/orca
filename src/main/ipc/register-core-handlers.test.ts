@@ -459,6 +459,7 @@ describe('registerCoreHandlers', () => {
     const agentAwakeService = { marker: 'agentAwakeService' }
     const onBeforeRelaunch = vi.fn()
     const getAdditionalAiVaultCodexHomePaths = vi.fn(() => ['/runtime/codex/home'])
+    const windowsNotificationActivationRouter = { marker: 'notification-router' }
 
     registerCoreHandlers(
       store as never,
@@ -476,7 +477,11 @@ describe('registerCoreHandlers', () => {
       agentAwakeService as never,
       undefined,
       undefined,
-      { getAdditionalAiVaultCodexHomePaths, onBeforeRelaunch }
+      {
+        getAdditionalAiVaultCodexHomePaths,
+        onBeforeRelaunch,
+        windowsNotificationActivationRouter: windowsNotificationActivationRouter as never
+      }
     )
 
     const aiVaultOptions = registerAiVaultHandlersMock.mock.calls[0]?.[0]
@@ -518,7 +523,11 @@ describe('registerCoreHandlers', () => {
     expect(registerStatsHandlersMock).toHaveBeenCalledWith(stats)
     expect(registerMemoryHandlersMock).toHaveBeenCalledWith(store)
     expect(registerNotebookHandlersMock).toHaveBeenCalledWith(store)
-    expect(registerNotificationHandlersMock).toHaveBeenCalledWith(store, runtime)
+    expect(registerNotificationHandlersMock).toHaveBeenCalledWith(
+      store,
+      runtime,
+      windowsNotificationActivationRouter
+    )
     expect(registerDeveloperPermissionHandlersMock).toHaveBeenCalled()
     expect(registerComputerUsePermissionHandlersMock).toHaveBeenCalled()
     expect(registerDashboardPopoutHandlersMock).toHaveBeenCalledWith(store, undefined)

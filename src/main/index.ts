@@ -2,7 +2,16 @@
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import os from 'node:os'
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, powerMonitor, type Tray } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  Notification,
+  powerMonitor,
+  type Tray
+} from 'electron'
 import { initTccPromptNotice, stopTccPromptNotice } from './macos-tcc-prompt-notice'
 import { electronApp, is } from '@electron-toolkit/utils'
 import {
@@ -68,6 +77,8 @@ import { initCohortClassifier } from './telemetry/cohort-classifier'
 import { initOnboardingCohortClassifier } from './telemetry/onboarding-cohort-classifier'
 import { resolveConsent } from './telemetry/consent'
 import { triggerStartupNotificationRegistration } from './ipc/notifications'
+import { activateNotificationTarget } from './ipc/notification-window-activation'
+import { createWindowsNotificationActivationRouter } from './ipc/windows-notification-activation'
 import { OrcaRuntimeService, type RuntimeWorktreeLifecycleEvent } from './runtime/orca-runtime'
 import { ArtifactCloudService } from './artifacts/artifact-cloud-service'
 import { isArtifactSharingEnabled } from '../shared/artifact-sharing-gate'
@@ -351,6 +362,7 @@ import { installLinuxBareOrcaDispatcher } from './cli/linux-bare-orca-dispatcher
 import { reconcileManagedWslCliRegistrations } from './cli/wsl-cli-registration-reconciliation'
 
 let mainWindow: BrowserWindow | null = null
+let notificationRendererReady = false
 /** Whether a manual app.quit() (Cmd+Q) is in progress; lets the close handler skip the running-process confirmation and go straight to close. */
 let isQuitting = false
 let store: Store | null = null
@@ -676,9 +688,20 @@ const multiInstanceProfile = configureMultiInstanceProfile({
   isDev: is.dev,
   isServeMode
 })
+const windowsNotificationActivationRouter =
+  process.platform === 'win32' && !isServeMode
+    ? createWindowsNotificationActivationRouter({
+        activateTarget: (target) =>
+          activateNotificationTarget(target, { sendNavigation: notificationRendererReady })
+      })
+    : null
 if (multiInstanceProfile) {
   app.once('will-quit', multiInstanceProfile.release)
   process.once('exit', () => multiInstanceProfile.release())
+}
+if (windowsNotificationActivationRouter) {
+  app.once('will-quit', windowsNotificationActivationRouter.close)
+  process.once('exit', windowsNotificationActivationRouter.close)
 }
 configureOrcaUserDataPathEnv()
 installServeSupervisorDisconnectQuit(isServeMode)
@@ -909,6 +932,19 @@ ipcMain.handle('app:recoverLegacyWorkerTerminalsForRendererStartup', () =>
 ipcMain.handle('ui:consumePendingOpenSettings', (event) =>
   pendingOpenSettings.matches(event.sender.id, { consume: true })
 )
+
+ipcMain.handle('ui:notificationActivationReady', (event) => {
+  if (
+    !windowsNotificationActivationRouter ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    mainWindow.webContents.id !== event.sender.id
+  ) {
+    return
+  }
+  notificationRendererReady = true
+  windowsNotificationActivationRouter.flush()
+})
 
 ipcMain.handle(
   'app:startupDiagnostic',
@@ -1347,6 +1383,7 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
     })
   }
 
+  notificationRendererReady = false
   const window = createMainWindow(store, {
     getIsQuitting: () => isQuitting,
     onQuitAborted: () => {
@@ -1354,6 +1391,7 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
       clearExpectedRendererReload()
     },
     onRendererProcessGone: (details, webContentsId) => {
+      notificationRendererReady = false
       recordProcessGoneCrash(
         'renderer',
         'renderer',
@@ -1384,12 +1422,14 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
     getKeybindings: () => keybindings?.getOverrides(),
     onBeforeReload: ({ ignoreCache, webContentsId }) => {
       if (mainWindow?.webContents.id === webContentsId) {
+        notificationRendererReady = false
         markExpectedRendererReload(webContentsId)
       }
       recordCrashBreadcrumb('manual_reload_requested', { ignoreCache })
     },
     // Why: the recovery reload re-fires did-finish-load; flag it so the local-PTY orphan sweep skips that reload (#5787).
     onBeforeRecoveryReload: (webContentsId) => {
+      notificationRendererReady = false
       markRecoveryReloadInFlight(webContentsId)
       recordDurableCrashBreadcrumb('renderer_recovery_reload')
     }
@@ -1427,6 +1467,11 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
 
   // Why: telemetry-plan.md anchors default-on app_opened to the first main-window load; this path fires only once consent is already enabled.
   const rendererWebContentsId = window.webContents.id
+  window.webContents.on('did-start-loading', () => {
+    if (window.webContents.isLoadingMainFrame()) {
+      notificationRendererReady = false
+    }
+  })
   const onFirstWindowLoad = (): void => {
     clearExpectedRendererReload(rendererWebContentsId)
     recordCrashBreadcrumb('main_window_loaded')
@@ -1478,7 +1523,8 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
         await preserveAgentAuthBeforeRestart({ codexRuntimeHome, claudeRuntimeAuth, store })
       },
       onOrcaProfileAuthMutation: () => desktopRelayService?.authMutated(),
-      onBeforeOrcaProfileSignOut: () => desktopRelayService?.fenceAndCloseNow()
+      onBeforeOrcaProfileSignOut: () => desktopRelayService?.fenceAndCloseNow(),
+      ...(windowsNotificationActivationRouter ? { windowsNotificationActivationRouter } : {})
     },
     pluginService ?? undefined,
     pluginMarketplaceService && pluginMarketplaceInstaller
@@ -1521,6 +1567,7 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
   window.on('closed', () => {
     if (mainWindow === window) {
       mainWindow = null
+      notificationRendererReady = false
     }
     clearExpectedRendererReload(rendererWebContentsId)
     automations?.setWebContents(null)
@@ -1682,6 +1729,7 @@ async function presentRendererRecoveryPrompt(recentRecoveryCount: number): Promi
     : await dialog.showMessageBox(options)
   if (response === 0 && mainWindow && !mainWindow.isDestroyed()) {
     recordDurableCrashBreadcrumb('renderer_recovery_manual_retry')
+    notificationRendererReady = false
     loadMainWindow(mainWindow)
   } else if (response === 1) {
     isQuitting = true
@@ -2164,6 +2212,11 @@ void app.whenReady().then(async () => {
   electronApp.setAppUserModelId(devInstanceIdentity.appUserModelId)
   // Why: setName drives the macOS safeStorage Keychain item name; use the stable appName (not per-branch `name`) so dev branches share one key and don't re-prompt.
   app.setName(devInstanceIdentity.appName)
+  if (windowsNotificationActivationRouter) {
+    Notification.handleActivation((details) => {
+      void windowsNotificationActivationRouter.handleActivationArguments(details.arguments)
+    })
+  }
   updateGpuAccelerationAboutPanel()
 
   // Why: managed WSL launchers live outside the Windows app bundle, so keep their launcher/bridge contract synced across app updates.
@@ -2901,6 +2954,7 @@ void app.whenReady().then(async () => {
     onCheckForUpdates: (options) => runUserInitiatedUpdateCheck(options),
     onBeforeReload: ({ ignoreCache, webContentsId }) => {
       if (mainWindow?.webContents.id === webContentsId) {
+        notificationRendererReady = false
         markExpectedRendererReload(webContentsId)
       }
       recordCrashBreadcrumb('manual_reload_requested', { ignoreCache })

@@ -27,6 +27,7 @@ import { registerEphemeralVmHandlers } from './ephemeral-vm'
 import { registerAiVaultHandlers } from './ai-vault'
 import { registerNativeChatHandlers } from './native-chat'
 import { registerNotificationHandlers } from './notifications'
+import type { WindowsNotificationActivationRouter } from './windows-notification-activation'
 import { registerNotebookHandlers } from './notebook'
 import { registerOnboardingHandlers } from './onboarding'
 import { registerDashboardPopoutHandlers } from './dashboard-popout'
@@ -104,6 +105,7 @@ type CoreHandlerLifecycleOptions = {
   prepareAiVaultSessionResume?: (
     args: AiVaultPrepareSessionResumeArgs
   ) => Promise<AiVaultPrepareSessionResumeResult>
+  windowsNotificationActivationRouter?: WindowsNotificationActivationRouter
 }
 
 export function registerCoreHandlers(
@@ -164,7 +166,7 @@ export function registerCoreHandlers(
   registerExportHandlers()
   registerStatsHandlers(stats)
   registerMemoryHandlers(store)
-  registerNotificationHandlers(store, runtime)
+  registerNotificationHandlers(store, runtime, lifecycleOptions.windowsNotificationActivationRouter)
   registerNotebookHandlers(store)
   registerOnboardingHandlers(store)
   registerDashboardPopoutHandlers(store, keybindings)

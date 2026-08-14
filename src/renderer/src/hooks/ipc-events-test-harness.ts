@@ -128,6 +128,7 @@ export type IpcEventsHarness = {
   navigationUpdate: (event: { browserPageId: string; url: string; title: string }) => void
   /** Standard (non-palette) target of a workspace digit chord. */
   activateAndRevealWorkspace: ReturnType<typeof vi.fn>
+  signalNotificationActivationReady: ReturnType<typeof vi.fn>
 }
 
 export type IpcEventsHarnessOptions = {
@@ -145,6 +146,7 @@ export async function loadIpcEventsHarness(
 ): Promise<IpcEventsHarness> {
   const replyTerminalCreate = vi.fn()
   const activateAndRevealWorkspace = vi.fn()
+  const signalNotificationActivationReady = vi.fn(() => Promise.resolve())
   let createTerminalListener: ((request: CreateTerminalRequest) => void) | null = null
   let requestTerminalCreateListener: ((request: RequestTerminalCreateRequest) => void) | null = null
   let navigationUpdateListener:
@@ -196,6 +198,7 @@ export async function loadIpcEventsHarness(
         ui: createApiNamespaceStub({
           getZoomLevel: () => 0,
           consumePendingOpenSettings: () => Promise.resolve(false),
+          signalNotificationActivationReady,
           set: vi.fn(),
           replyTabCreate: vi.fn(),
           replyTabClose: vi.fn(),
@@ -288,7 +291,8 @@ export async function loadIpcEventsHarness(
       }
       navigationUpdateListener(event)
     },
-    activateAndRevealWorkspace
+    activateAndRevealWorkspace,
+    signalNotificationActivationReady
   }
 }
 

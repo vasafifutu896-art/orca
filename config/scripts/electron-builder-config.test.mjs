@@ -114,6 +114,10 @@ describe('electron-builder config', () => {
         expect.objectContaining({
           from: 'native/windows-cli-launcher/.build/orca.exe',
           to: 'bin/orca.exe'
+        }),
+        expect.objectContaining({
+          from: 'native/windows-foreground-permission/.build/windows-foreground-permission.node',
+          to: 'bin/windows-foreground-permission.node'
         })
       ])
     )
@@ -241,11 +245,12 @@ describe('electron-builder config', () => {
     }
   })
 
-  it('uses a concurrency-safe single-file Windows portable target', () => {
+  it('uses a one-pass, concurrency-safe Windows portable target', () => {
     expect(electronBuilderConfig.portable).toEqual({
       artifactName: 'orca-windows-portable.${ext}',
       requestExecutionLevel: 'user',
-      unpackDirName: false
+      unpackDirName: true,
+      useZip: true
     })
   })
 

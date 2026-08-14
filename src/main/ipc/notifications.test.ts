@@ -630,6 +630,206 @@ describe('registerNotificationHandlers', () => {
     }
   })
 
+  it('routes a Windows toast through its owning process instead of the receiver window', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      const routeId = '22222222-2222-4222-8222-222222222222'
+      const ownerId = '11111111-1111-4111-8111-111111111111'
+      const activate = vi.fn(() => 'activated')
+      const discard = vi.fn()
+      const registerTarget = vi.fn(() => ({
+        routeId,
+        activationArguments: `type=click&tag=${routeId}&orcaOwner=${ownerId}&orcaRoute=${routeId}`,
+        activate,
+        discard
+      }))
+      const router = { ready: Promise.resolve(), registerTarget }
+      registerNotificationHandlers(
+        {
+          getSettings: () => ({
+            notifications: {
+              enabled: true,
+              agentTaskComplete: true,
+              terminalBell: true,
+              suppressWhenFocused: false
+            }
+          })
+        } as never,
+        undefined,
+        router as never
+      )
+
+      const paneKey = 'tab-2:11111111-1111-4111-8111-111111111111'
+      expect(
+        await getDispatchHandler()(
+          {},
+          { source: 'agent-task-complete', worktreeId: 'repo::C:\\work\\한국어', paneKey }
+        )
+      ).toEqual({ delivered: true })
+
+      expect(registerTarget).toHaveBeenCalledWith({
+        worktreeId: 'repo::C:\\work\\한국어',
+        paneKey
+      })
+      expect(notificationCtorMock).toHaveBeenCalledWith({
+        title: 'Task complete in workspace',
+        body: 'A coding agent finished working.',
+        id: routeId,
+        toastXml:
+          `<toast launch="type=click&amp;tag=${routeId}&amp;orcaOwner=${ownerId}&amp;orcaRoute=${routeId}">` +
+          '<visual><binding template="ToastGeneric"><text>Task complete in workspace</text>' +
+          '<text>A coding agent finished working.</text></binding></visual></toast>'
+      })
+
+      getNotificationEventHandler('click')()
+      expect(activate).toHaveBeenCalledTimes(1)
+      expect(getTrustedUIRendererWindowMock).not.toHaveBeenCalled()
+      expect(discard).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
+
+  it('does not show an actionable Windows toast when its owner pipe is unavailable', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      const registerTarget = vi.fn()
+      registerNotificationHandlers(
+        {
+          getSettings: () => ({
+            notifications: {
+              enabled: true,
+              agentTaskComplete: true,
+              terminalBell: true,
+              suppressWhenFocused: false
+            }
+          })
+        } as never,
+        undefined,
+        { ready: Promise.resolve(false), registerTarget } as never
+      )
+
+      await expect(
+        getDispatchHandler()({}, { source: 'test', worktreeId: 'repo::C:\\work' })
+      ).resolves.toEqual({ delivered: false, reason: 'not-supported' })
+      expect(registerTarget).not.toHaveBeenCalled()
+      expect(notificationCtorMock).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
+
+  it('keeps an Action Center route after native close but discards it on delivery failure', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      const routeId = '22222222-2222-4222-8222-222222222222'
+      const ownerId = '11111111-1111-4111-8111-111111111111'
+      const discard = vi.fn()
+      const router = {
+        ready: Promise.resolve(),
+        registerTarget: () => ({
+          routeId,
+          activationArguments: `type=click&tag=${routeId}&orcaOwner=${ownerId}&orcaRoute=${routeId}`,
+          activate: vi.fn(),
+          discard
+        })
+      }
+      registerNotificationHandlers(
+        {
+          getSettings: () => ({
+            notifications: {
+              enabled: true,
+              agentTaskComplete: true,
+              terminalBell: true,
+              suppressWhenFocused: false
+            }
+          })
+        } as never,
+        undefined,
+        router as never
+      )
+
+      expect(
+        await getDispatchHandler()({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1' })
+      ).toEqual({ delivered: true })
+      getNotificationEventHandler('close')()
+      expect(discard).not.toHaveBeenCalled()
+
+      notificationOnMock.mockClear()
+      expect(await getDispatchHandler()({}, { source: 'test', worktreeId: 'repo::wt1' })).toEqual({
+        delivered: true
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      getNotificationEventHandler('failed')({}, 'delivery failed')
+      warn.mockRestore()
+      expect(discard).toHaveBeenCalledTimes(1)
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
+
+  it('discards superseded and explicitly dismissed Windows activation routes', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      const ownerId = '11111111-1111-4111-8111-111111111111'
+      const firstRouteId = '22222222-2222-4222-8222-222222222222'
+      const secondRouteId = '33333333-3333-4333-8333-333333333333'
+      const firstDiscard = vi.fn()
+      const secondDiscard = vi.fn()
+      const routes = [
+        { routeId: firstRouteId, discard: firstDiscard },
+        { routeId: secondRouteId, discard: secondDiscard }
+      ]
+      const router = {
+        ready: Promise.resolve(),
+        registerTarget: vi.fn(() => {
+          const route = routes.shift()
+          if (!route) {
+            throw new Error('route sequence exhausted')
+          }
+          return {
+            routeId: route.routeId,
+            activationArguments:
+              `type=click&tag=${route.routeId}&orcaOwner=${ownerId}` +
+              `&orcaRoute=${route.routeId}`,
+            activate: vi.fn(),
+            discard: route.discard
+          }
+        })
+      }
+      registerNotificationHandlers(
+        {
+          getSettings: () => ({
+            notifications: {
+              enabled: true,
+              agentTaskComplete: true,
+              terminalBell: true,
+              suppressWhenFocused: false
+            }
+          })
+        } as never,
+        undefined,
+        router as never
+      )
+
+      const dispatch = getDispatchHandler()
+      const request = { source: 'test', worktreeId: 'repo::wt1', notificationId: 'logical-1' }
+      expect(await dispatch({}, request)).toEqual({ delivered: true })
+      expect(await dispatch({}, request)).toEqual({ delivered: true })
+      expect(firstDiscard).toHaveBeenCalledTimes(1)
+      expect(secondDiscard).not.toHaveBeenCalled()
+
+      expect(getDismissHandler()({}, ['logical-1'])).toEqual({ dismissed: 1 })
+      expect(secondDiscard).toHaveBeenCalledTimes(1)
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
+
   it('clears the retained notification fallback timer when the native notification closes', async () => {
     registerNotificationHandlers({
       getSettings: () => ({

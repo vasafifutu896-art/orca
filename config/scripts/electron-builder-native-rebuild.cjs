@@ -14,6 +14,17 @@ function runElectronBuilderNativeRebuild(context, runner = execFileSync, runtime
       cwd: projectDir,
       stdio: 'inherit'
     })
+    runner(
+      process.execPath,
+      [
+        'config/scripts/build-windows-foreground-permission.mjs',
+        `--arch=${readArchName(context?.arch)}`
+      ],
+      {
+        cwd: projectDir,
+        stdio: 'inherit'
+      }
+    )
   }
   runner(process.execPath, args, {
     cwd: projectDir,

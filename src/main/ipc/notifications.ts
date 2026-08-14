@@ -1,5 +1,11 @@
 /* eslint-disable max-lines -- Why: notification IPC keeps permission, dispatch, custom sound asset, and sound-loading handlers colocated so renderer/main contracts stay auditable. */
-import { app, BrowserWindow, Notification, ipcMain, shell } from 'electron'
+import {
+  BrowserWindow,
+  Notification,
+  ipcMain,
+  shell,
+  type NotificationConstructorOptions
+} from 'electron'
 import { readFile, stat } from 'node:fs/promises'
 import { extname, isAbsolute, normalize } from 'node:path'
 import beepSoundPath from '../../../resources/notification-sounds/beep.mp3?asset'
@@ -21,15 +27,16 @@ import type {
   NotificationSettings,
   NotificationSoundDataResult
 } from '../../shared/notification-settings-types'
-import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { buildNotificationOptions } from './notification-options'
 import { readNotificationAuthorizationStatus } from './notification-authorization-status'
-import { parsePaneKey } from '../../shared/stable-pane-id'
 import { setTrayAttention } from '../tray/system-tray'
-import { activateExistingWindow } from '../window/focus-existing-window'
 import { isMainWindowVisible } from '../window/main-window-visibility'
-import { getTrustedUIRendererWindow } from './ui'
+import { activateNotificationTarget } from './notification-window-activation'
+import {
+  buildWindowsNotificationToastXml,
+  type WindowsNotificationActivationRouter
+} from './windows-notification-activation'
 
 const NOTIFICATION_COOLDOWN_MS = 5000
 const MAX_RECENT_NOTIFICATION_KEYS = 50
@@ -64,7 +71,7 @@ type NotificationSoundId = NotificationSettings['customSoundId']
 const activeNotifications = new Set<Notification>()
 const activeNotificationsById = new Map<
   string,
-  { notification: Notification; release: () => void }
+  { notification: Notification; release: () => void; discardActivation?: () => void }
 >()
 
 function retainNotificationUntilRelease(
@@ -308,7 +315,11 @@ function reserveNotificationCooldown(
   return true
 }
 
-export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntimeService): void {
+export function registerNotificationHandlers(
+  store: Store,
+  runtime?: OrcaRuntimeService,
+  windowsActivationRouter?: WindowsNotificationActivationRouter
+): void {
   const recentDesktopNotifications = new Map<string, number>()
   const recentMobileNotifications = new Map<string, number>()
   // Why: handler registration marks a fresh session; permission evidence from a previous one must not leak in.
@@ -379,6 +390,7 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
     for (const id of uniqueIds) {
       const entry = activeNotificationsById.get(id)
       if (entry) {
+        entry.discardActivation?.()
         entry.notification.close()
         entry.release()
         dismissed += 1
@@ -415,7 +427,7 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
         return { delivered: false, reason: 'source-disabled' }
       }
 
-      const notificationOptions = buildNotificationOptions(args)
+      const notificationOptions: NotificationConstructorOptions = buildNotificationOptions(args)
 
       // Why: desktop focus only means this computer sees the worktree; the paired phone may still need the alert.
       if (runtime && args.source !== 'test') {
@@ -424,8 +436,8 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
           runtime.dispatchMobileNotification({
             type: 'notification',
             source: args.source,
-            title: notificationOptions.title,
-            body: notificationOptions.body,
+            title: notificationOptions.title ?? '',
+            body: notificationOptions.body ?? '',
             worktreeId: args.worktreeId,
             ...(args.notificationId ? { notificationId: args.notificationId } : {})
           })
@@ -465,10 +477,38 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
           // Why: macOS treats an unset sound as silent, so request Electron's default when using the OS sound.
           notificationOptions.sound = 'default'
         }
-        const notification = new Notification(notificationOptions)
+        const notificationTarget =
+          args.worktreeId && args.worktreeId.includes('::')
+            ? {
+                worktreeId: args.worktreeId,
+                ...(args.paneKey ? { paneKey: args.paneKey } : {})
+              }
+            : null
+        const activationRoute =
+          process.platform === 'win32' && windowsActivationRouter && notificationTarget
+            ? windowsActivationRouter.registerTarget(notificationTarget)
+            : null
+        if (activationRoute) {
+          notificationOptions.id = activationRoute.routeId
+          notificationOptions.toastXml = buildWindowsNotificationToastXml({
+            title: notificationOptions.title ?? '',
+            body: notificationOptions.body ?? '',
+            activationArguments: activationRoute.activationArguments,
+            silent: notificationOptions.silent
+          })
+        }
+
+        let notification: Notification
+        try {
+          notification = new Notification(notificationOptions)
+        } catch (error) {
+          activationRoute?.discard()
+          throw error
+        }
         if (args.notificationId) {
           const previous = activeNotificationsById.get(args.notificationId)
           if (previous) {
+            previous.discardActivation?.()
             previous.notification.close()
             previous.release()
           }
@@ -477,8 +517,17 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
         // Why: prevent GC from collecting the notification and its click handler while it's still visible.
         let clickHandler: (() => void) | null = null
         let failedHandler: ((_event: unknown, error?: string) => void) | null = null
-        const entryForId: { notification: Notification; release: () => void } | null =
-          args.notificationId ? { notification, release: () => {} } : null
+        const entryForId: {
+          notification: Notification
+          release: () => void
+          discardActivation?: () => void
+        } | null = args.notificationId
+          ? {
+              notification,
+              release: () => {},
+              ...(activationRoute ? { discardActivation: activationRoute.discard } : {})
+            }
+          : null
         const release = retainNotificationUntilRelease(notification, () => {
           if (clickHandler) {
             notification.removeListener('click', clickHandler)
@@ -505,37 +554,21 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
           logNativeNotificationFailure(args.source, error)
           // Why: feeds the permission card's evidence.
           lastObservedDeliveryOutcome = 'failed'
+          activationRoute?.discard()
           release()
         }
         notification.on('failed', failedHandler)
 
         // Why: worktreeId is formatted "repoId::worktreePath"; without the separator we can't extract a repoId, so skip the click-to-navigate binding.
-        if (args.worktreeId && args.worktreeId.includes('::')) {
-          const repoId = getRepoIdFromWorktreeId(args.worktreeId)
+        if (notificationTarget) {
           clickHandler = () => {
             release()
-            const win = getTrustedUIRendererWindow()
-            if (!win || win.isDestroyed()) {
-              return
-            }
-            // Why: Windows can leave the clicked notification's Orca instance behind
-            // another app/window unless we reuse the reinforced foreground sequence.
-            activateExistingWindow(win, app)
-            win.webContents.send('ui:activateWorktree', {
-              repoId,
-              worktreeId: args.worktreeId
-            })
-            // Why: focusTerminal targets the pane by stable leafId so split-pane notifications land on the exact pane.
-            const paneTarget = args.paneKey ? parsePaneKey(args.paneKey) : null
-            if (paneTarget) {
-              win.webContents.send('ui:focusTerminal', {
-                tabId: paneTarget.tabId,
-                worktreeId: args.worktreeId,
-                leafId: paneTarget.leafId,
-                ackPaneKeyOnSuccess: args.paneKey,
-                flashFocusedPane: true,
-                scrollToBottomIfOutputSinceLastView: true
-              })
+            // Both Electron's live click and its global COM activation can fire; the
+            // owned Windows route consumes once, while other platforms activate directly.
+            if (activationRoute) {
+              activationRoute.activate()
+            } else {
+              activateNotificationTarget(notificationTarget)
             }
           }
           notification.on('click', clickHandler)
@@ -544,7 +577,13 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
         const displayConfirmation = args.requireDisplayConfirmation
           ? waitForNotificationDisplay(notification)
           : null
-        notification.show()
+        try {
+          notification.show()
+        } catch (error) {
+          activationRoute?.discard()
+          release()
+          throw error
+        }
 
         if (displayConfirmation) {
           return displayConfirmation.then((displayed) => {
@@ -560,6 +599,24 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
         return { delivered: true }
       }
 
+      if (
+        process.platform === 'win32' &&
+        windowsActivationRouter &&
+        args.worktreeId?.includes('::')
+      ) {
+        // Why: do not expose an actionable toast until its owner pipe can receive a
+        // Windows COM activation that lands in another Orca process.
+        return windowsActivationRouter.ready
+          .then((available) =>
+            available === false
+              ? { delivered: false as const, reason: 'not-supported' as const }
+              : deliverNativeNotification()
+          )
+          .catch((error) => {
+            console.warn('[notifications] Windows activation owner is unavailable', error)
+            return { delivered: false, reason: 'not-supported' }
+          })
+      }
       if (process.platform !== 'darwin') {
         return deliverNativeNotification()
       }

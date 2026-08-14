@@ -613,7 +613,7 @@ function getWorktreeRuntimeEnvironmentId(worktreeId: string | null | undefined):
   return getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
 }
 
-export function useIpcEvents(): void {
+export function useIpcEvents(onListenersReady?: (ready: true) => void): void {
   useEffect(() => {
     const unsubs: (() => void)[] = []
     const reconnectAuthorityByTarget = new Map<string, DirectSshAuthority>()
@@ -3803,6 +3803,10 @@ export function useIpcEvents(): void {
         })
     }
 
+    // Why: App combines this listener latch with completed workspace/session recovery before
+    // telling main to flush a queued notification navigation.
+    onListenersReady?.(true)
+
     return () => {
       // Why: React remount can leave an older snapshot promise in flight; it must not write through after the replacement effect processes a clear.
       agentStatusEffectDisposed = true
@@ -3833,7 +3837,7 @@ export function useIpcEvents(): void {
       reconnectAuthorityByTarget.clear()
       resetAgentHookCompletionNotificationCoordinators()
     }
-  }, [])
+  }, [onListenersReady])
 }
 
 function hasRuntimeBackedWorktreeAttribution(data: AgentStatusIpcPayload): boolean {

@@ -45,6 +45,7 @@ import { useAppStore } from './store'
 import { WORKTREE_REFRESH_CONCURRENCY } from './store/slices/worktrees'
 import { useShallow } from 'zustand/react/shallow'
 import { isRemoteWorkspaceSnapshotApplyInProgress, useIpcEvents } from './hooks/useIpcEvents'
+import { useNotificationActivationReady } from './hooks/use-notification-activation-ready'
 import { useAutomationDispatchEvents } from './hooks/useAutomationDispatchEvents'
 import RetainedAgentsSyncGate from './components/dashboard/RetainedAgentsSyncGate'
 import { AgentHibernationGate } from './components/AgentHibernationGate'
@@ -776,7 +777,9 @@ function App(): React.JSX.Element {
   }, [activeModal, shouldMountAddRepoDialog])
 
   // Subscribe to IPC push events
-  useIpcEvents()
+  const [ipcEventListenersReady, setIpcEventListenersReady] = useState(false)
+  useIpcEvents(setIpcEventListenersReady)
+  useNotificationActivationReady(ipcEventListenersReady, workspaceSessionReady)
   useRemoteRuntimeRecoveryTriggers()
   useAutomationDispatchEvents()
   // Why: retention runs at App level (in <RetainedAgentsSyncGate />, a null leaf) so "done" agents survive card collapse and its high-churn subscriptions don't re-render App.

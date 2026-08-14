@@ -158,6 +158,15 @@ describe('browser navigation updates', () => {
   })
 })
 
+describe('notification activation readiness', () => {
+  it('leaves the main-process signal to the App hydration gate', async () => {
+    const harness = await loadIpcEventsHarness(createHarnessStoreState({ tabsByWorktree: {} }))
+
+    harness.useIpcEvents()
+    expect(harness.signalNotificationActivationReady).not.toHaveBeenCalled()
+  })
+})
+
 function expectWorktreeRouting(worktreeId: string): unknown {
   return expect.objectContaining({ worktreeId })
 }
