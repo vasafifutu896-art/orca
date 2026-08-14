@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { join } from 'node:path'
 import {
   createWindowsForegroundPermissionGrant,
   resolveWindowsForegroundPermissionAddonCandidates
@@ -21,7 +22,9 @@ describe('Windows foreground permission runtime', () => {
         cwd: 'C:\\untrusted-repo',
         moduleDirectory: 'C:\\untrusted-repo\\out\\main'
       })
-    ).toEqual(['C:\\Program Files\\Orca\\resources/bin/windows-foreground-permission.node'])
+    ).toEqual([
+      join('C:\\Program Files\\Orca\\resources', 'bin', 'windows-foreground-permission.node')
+    ])
 
     expect(
       resolveWindowsForegroundPermissionAddonCandidates({
@@ -31,7 +34,13 @@ describe('Windows foreground permission runtime', () => {
         moduleDirectory: 'C:\\dev\\orca\\out\\main'
       })
     ).toContain(
-      'C:\\dev\\orca/native/windows-foreground-permission/.build/windows-foreground-permission.node'
+      join(
+        'C:\\dev\\orca',
+        'native',
+        'windows-foreground-permission',
+        '.build',
+        'windows-foreground-permission.node'
+      )
     )
   })
 

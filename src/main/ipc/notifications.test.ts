@@ -503,6 +503,8 @@ describe('registerNotificationHandlers', () => {
     const restore = vi.fn()
     const show = vi.fn()
     const focus = vi.fn()
+    const moveTop = vi.fn()
+    const setAlwaysOnTop = vi.fn()
     const popoutWindow = {
       isDestroyed: () => false,
       isFocused: () => true,
@@ -518,6 +520,9 @@ describe('registerNotificationHandlers', () => {
       restore,
       show,
       focus,
+      moveTop,
+      isAlwaysOnTop: () => false,
+      setAlwaysOnTop,
       webContents: { send: webContentsSend }
     }
     getAllWindowsMock.mockReturnValue([popoutWindow, mainWindow] as never)
@@ -546,6 +551,12 @@ describe('registerNotificationHandlers', () => {
     expect(restore).toHaveBeenCalledTimes(1)
     expect(show).toHaveBeenCalledTimes(1)
     expect(focus).toHaveBeenCalledTimes(1)
+    if (process.platform === 'win32') {
+      expect(moveTop).toHaveBeenCalledTimes(1)
+      expect(setAlwaysOnTop).toHaveBeenCalledWith(true)
+      vi.runOnlyPendingTimers()
+      expect(setAlwaysOnTop).toHaveBeenLastCalledWith(false)
+    }
     expect(popoutFocus).not.toHaveBeenCalled()
     expect(popoutSend).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
