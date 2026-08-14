@@ -7,15 +7,32 @@
       "webDescription": "Retry the web client or reconnect to the paired runtime."
     }
   },
-  "sidebarTerminalSessions": {
-    "title": "Terminal sessions",
+  "terminalManager": {
+    "title": "Terminal manager",
+    "newGroup": "New group",
     "newSession": "New terminal session",
-    "renameInput": "Rename terminal session {{value0}}",
-    "rename": "Rename",
-    "pin": "Pin session",
-    "unpin": "Unpin session",
+    "completionNotificationsOn": "AI completion alerts on",
+    "completionNotificationsOff": "AI completion alerts off",
+    "groupName": "Group name",
+    "groupNamePlaceholder": "e.g. Implementation",
+    "noProject": "Open a project to manage its terminal sessions.",
+    "ungrouped": "Ungrouped",
+    "renameSessionInput": "Rename session {{value0}}",
     "close": "Close {{value0}}",
-    "closeAction": "Close session"
+    "renameSession": "Rename session",
+    "moveToGroup": "Move to group",
+    "unpin": "Unpin session",
+    "pin": "Pin session",
+    "closeSession": "Close session",
+    "dragSession": "Drag session {{value0}}",
+    "dragGroup": "Drag group {{value0}}",
+    "renameGroupInput": "Rename group {{value0}}",
+    "groupActions": "{{value0}} group actions",
+    "renameGroup": "Rename group",
+    "moveGroupUp": "Move group up",
+    "moveGroupDown": "Move group down",
+    "deleteGroup": "Delete group",
+    "dropHere": "Drop terminal sessions here"
   },
   "browser": {
     "loadFailure": {

@@ -7,15 +7,32 @@
       "webDescription": "重试 Web 客户端或重新连接到配对的运行时。"
     }
   },
-  "sidebarTerminalSessions": {
-    "title": "终端会话",
+  "terminalManager": {
+    "title": "终端管理",
+    "newGroup": "新建分组",
     "newSession": "新建终端会话",
-    "renameInput": "重命名终端会话 {{value0}}",
-    "rename": "重命名",
-    "pin": "固定会话",
-    "unpin": "取消固定会话",
+    "completionNotificationsOn": "AI 完成提醒已开启",
+    "completionNotificationsOff": "AI 完成提醒已关闭",
+    "groupName": "分组名称",
+    "groupNamePlaceholder": "例如：实现",
+    "noProject": "请打开一个项目以管理其终端会话。",
+    "ungrouped": "未分组",
+    "renameSessionInput": "重命名会话 {{value0}}",
     "close": "关闭 {{value0}}",
-    "closeAction": "关闭会话"
+    "renameSession": "重命名会话",
+    "moveToGroup": "移动到分组",
+    "unpin": "取消固定会话",
+    "pin": "固定会话",
+    "closeSession": "关闭会话",
+    "dragSession": "拖动会话 {{value0}}",
+    "dragGroup": "拖动分组 {{value0}}",
+    "renameGroupInput": "重命名分组 {{value0}}",
+    "groupActions": "{{value0}} 分组操作",
+    "renameGroup": "重命名分组",
+    "moveGroupUp": "上移分组",
+    "moveGroupDown": "下移分组",
+    "deleteGroup": "删除分组",
+    "dropHere": "将终端会话拖放到此处"
   },
   "githubChecks": {
     "retrying": "正在重试..."

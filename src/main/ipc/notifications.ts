@@ -435,7 +435,7 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
         BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) ?? null
       if (
         settings.suppressWhenFocused &&
-        args.isActiveWorktree &&
+        (args.isTriggerVisible ?? args.isActiveWorktree) &&
         browserWindow &&
         browserWindow.isFocused()
       ) {

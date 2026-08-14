@@ -179,6 +179,7 @@ describe('dispatchTerminalNotification', () => {
         worktreeLabel: 'master',
         terminalTitle: 'codex',
         isActiveWorktree: false,
+        isTriggerVisible: false,
         agentType: 'codex',
         agentState: 'done',
         agentPrompt: 'codex-hook-notify',
@@ -273,6 +274,9 @@ describe('dispatchTerminalNotification', () => {
     })
 
     expect(window.api.notifications.dispatch).toHaveBeenCalled()
+    expect(window.api.notifications.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ isActiveWorktree: true, isTriggerVisible: true })
+    )
     expect(mockState.markWorktreeUnread).not.toHaveBeenCalled()
     expect(mockState.markTerminalTabUnread).not.toHaveBeenCalled()
     expect(mockState.markTerminalPaneUnread).not.toHaveBeenCalled()
@@ -302,6 +306,9 @@ describe('dispatchTerminalNotification', () => {
     })
 
     expect(window.api.notifications.dispatch).toHaveBeenCalled()
+    expect(window.api.notifications.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ isActiveWorktree: true, isTriggerVisible: false })
+    )
     expect(mockState.markWorktreeUnread).toHaveBeenCalledWith('wt-primary')
     expect(mockState.markTerminalTabUnread).toHaveBeenCalledWith('tab-2')
     expect(mockState.markTerminalPaneUnread).toHaveBeenCalledWith(hiddenPaneKey)

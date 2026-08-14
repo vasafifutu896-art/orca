@@ -139,6 +139,10 @@ export function dispatchTerminalNotification(
     return
   }
 
+  const isTriggerVisible = event.paneKey
+    ? isVisibleForegroundPaneKey(state, worktreeId, event.paneKey)
+    : state.activeWorktreeId === worktreeId && isOrcaWindowForegroundFocused()
+
   if (event.source === 'agent-task-complete') {
     const terminalAttentionEnabled = state.settings?.experimentalTerminalAttention === true
     let tabId: string | null = null
@@ -157,9 +161,7 @@ export function dispatchTerminalNotification(
 
     // Why: a focused worktree can still hide other terminal tabs/split panes;
     // only the exact active pane counts as already viewed.
-    const shouldMarkUnread = event.paneKey
-      ? !isVisibleForegroundPaneKey(state, worktreeId, event.paneKey)
-      : state.activeWorktreeId !== worktreeId || !isOrcaWindowForegroundFocused()
+    const shouldMarkUnread = !isTriggerVisible
     if (shouldMarkUnread) {
       // Why: activeWorktreeId is only in-app selection. If Orca is backgrounded,
       // a selected chat finishing still needs unread/Dock attention.
@@ -225,6 +227,7 @@ export function dispatchTerminalNotification(
       hasMultipleActiveRepos: countReposNeedingNotificationDisambiguation(state) > 1,
       terminalTitle: event.terminalTitle,
       isActiveWorktree: state.activeWorktreeId === worktreeId,
+      isTriggerVisible,
       ...agentSnapshot
     })
     .then((result) => {

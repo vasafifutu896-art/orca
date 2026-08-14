@@ -36,6 +36,8 @@ export type NotificationDispatchRequest = {
   hasMultipleActiveRepos?: boolean
   terminalTitle?: string
   isActiveWorktree?: boolean
+  /** True only when the exact terminal pane that triggered the alert is visible and focused. */
+  isTriggerVisible?: boolean
   agentType?: AgentType
   agentState?: AgentStatusState
   agentPrompt?: string

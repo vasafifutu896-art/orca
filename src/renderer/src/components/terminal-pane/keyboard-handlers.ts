@@ -198,6 +198,27 @@ export function matchFileSearchShortcut(
   })
 }
 
+export function shouldCopyTerminalSelectionOnEnter(
+  event: Pick<
+    KeyboardEvent,
+    'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'repeat' | 'isComposing'
+  >,
+  hasSelection: boolean,
+  hasPendingImeComposition: boolean
+): boolean {
+  return (
+    hasSelection &&
+    event.key === 'Enter' &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.repeat &&
+    !event.isComposing &&
+    !hasPendingImeComposition
+  )
+}
+
 type KeyboardHandlersDeps = {
   tabId: string
   worktreeId: string
@@ -574,6 +595,27 @@ export function useTerminalKeyboardShortcuts({
       }
 
       if (isEditableTarget(e.target)) {
+        return
+      }
+
+      const selectionPane = manager.getActivePane() ?? manager.getPanes()[0]
+      if (
+        selectionPane &&
+        shouldCopyTerminalSelectionOnEnter(
+          e,
+          Boolean(selectionPane.terminal.getSelection()),
+          hasPendingImeComposition
+        )
+      ) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        void copyTerminalSelection({
+          terminal: selectionPane.terminal,
+          writeClipboardText: window.api.ui.writeTerminalClipboardText,
+          clearSelectionOnSuccess: true
+        }).catch(() => {
+          /* Keep the selection available so a failed clipboard write can be retried. */
+        })
         return
       }
 

@@ -7,15 +7,32 @@
       "webDescription": "Web クライアントを再試行するか、ペアリングされたランタイムに再接続します。"
     }
   },
-  "sidebarTerminalSessions": {
-    "title": "ターミナルセッション",
+  "terminalManager": {
+    "title": "ターミナル管理",
+    "newGroup": "新しいグループ",
     "newSession": "新しいターミナルセッション",
-    "renameInput": "ターミナルセッション {{value0}} の名前を変更",
-    "rename": "名前を変更",
-    "pin": "セッションを固定",
-    "unpin": "セッションの固定を解除",
+    "completionNotificationsOn": "AI 完了通知：オン",
+    "completionNotificationsOff": "AI 完了通知：オフ",
+    "groupName": "グループ名",
+    "groupNamePlaceholder": "例：実装",
+    "noProject": "ターミナルセッションを管理するプロジェクトを開いてください。",
+    "ungrouped": "未分類",
+    "renameSessionInput": "セッション {{value0}} の名前を変更",
     "close": "{{value0}} を閉じる",
-    "closeAction": "セッションを閉じる"
+    "renameSession": "セッション名を変更",
+    "moveToGroup": "グループへ移動",
+    "unpin": "セッションの固定を解除",
+    "pin": "セッションを固定",
+    "closeSession": "セッションを閉じる",
+    "dragSession": "セッション {{value0}} をドラッグ",
+    "dragGroup": "グループ {{value0}} をドラッグ",
+    "renameGroupInput": "グループ {{value0}} の名前を変更",
+    "groupActions": "グループ {{value0}} の操作",
+    "renameGroup": "グループ名を変更",
+    "moveGroupUp": "グループを上へ移動",
+    "moveGroupDown": "グループを下へ移動",
+    "deleteGroup": "グループを削除",
+    "dropHere": "ターミナルセッションをここにドロップ"
   },
   "githubChecks": {
     "retrying": "再試行中…"

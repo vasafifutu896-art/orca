@@ -892,6 +892,7 @@ export function normalizeRightSidebarTab(tab: unknown): PersistedState['ui']['ri
   if (
     tab === 'explorer' ||
     tab === 'search' ||
+    tab === 'terminal-manager' ||
     tab === 'vault' ||
     tab === 'workspaces' ||
     tab === 'pr-checks' ||

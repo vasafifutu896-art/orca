@@ -5,7 +5,8 @@ import {
   matchFileSearchShortcut,
   matchSearchNavigate,
   resolveTerminalKeyboardShortcutAction,
-  runTerminalSearchNavigation
+  runTerminalSearchNavigation,
+  shouldCopyTerminalSelectionOnEnter
 } from './keyboard-handlers'
 
 function makeKeyEvent(
@@ -16,8 +17,12 @@ function makeKeyEvent(
     shiftKey: boolean
     altKey: boolean
     repeat: boolean
+    isComposing: boolean
   }>
-): Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'repeat'> {
+): Pick<
+  KeyboardEvent,
+  'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'repeat' | 'isComposing'
+> {
   return {
     key: 'g',
     metaKey: false,
@@ -25,9 +30,47 @@ function makeKeyEvent(
     shiftKey: false,
     altKey: false,
     repeat: false,
+    isComposing: false,
     ...overrides
   }
 }
+
+describe('shouldCopyTerminalSelectionOnEnter', () => {
+  it('claims a plain Enter only while terminal text is selected', () => {
+    expect(shouldCopyTerminalSelectionOnEnter(makeKeyEvent({ key: 'Enter' }), true, false)).toBe(
+      true
+    )
+    expect(shouldCopyTerminalSelectionOnEnter(makeKeyEvent({ key: 'Enter' }), false, false)).toBe(
+      false
+    )
+  })
+
+  it('leaves modified, repeated, and IME Enter events to their existing routes', () => {
+    expect(
+      shouldCopyTerminalSelectionOnEnter(
+        makeKeyEvent({ key: 'Enter', shiftKey: true }),
+        true,
+        false
+      )
+    ).toBe(false)
+    expect(
+      shouldCopyTerminalSelectionOnEnter(makeKeyEvent({ key: 'Enter', ctrlKey: true }), true, false)
+    ).toBe(false)
+    expect(
+      shouldCopyTerminalSelectionOnEnter(makeKeyEvent({ key: 'Enter', repeat: true }), true, false)
+    ).toBe(false)
+    expect(
+      shouldCopyTerminalSelectionOnEnter(
+        makeKeyEvent({ key: 'Enter', isComposing: true }),
+        true,
+        false
+      )
+    ).toBe(false)
+    expect(shouldCopyTerminalSelectionOnEnter(makeKeyEvent({ key: 'Enter' }), true, true)).toBe(
+      false
+    )
+  })
+})
 
 describe('matchSearchNavigate', () => {
   const isMac = true

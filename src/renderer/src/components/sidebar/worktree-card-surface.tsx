@@ -6,7 +6,6 @@ import { AutoRenameFailedDialog } from './AutoRenameFailedDialog'
 import WorktreeContextMenu from './WorktreeContextMenu'
 import { WorktreeCardDetailsHover } from './WorktreeCardMeta'
 import { WorktreeCardPortsDetails } from './WorktreeCardPorts'
-import { WorktreeTerminalSessions } from './WorktreeTerminalSessions'
 import { WorktreeCardParentContent } from './worktree-card-parent-content'
 import { buildWorktreeCardPresentation } from './worktree-card-presentation'
 import type { WorktreeCardController } from './use-worktree-card-controller'
@@ -166,8 +165,6 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
         </div>
       )}
       {parentCardBodyWithHoverDetails}
-      {!affiliateListMode ? <WorktreeTerminalSessions worktreeId={worktree.id} /> : null}
-
       {newCardStyle && lineageChildren ? (
         <div
           className="mt-1.5 space-y-1"

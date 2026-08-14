@@ -318,6 +318,37 @@ describe('registerNotificationHandlers', () => {
     expect(notificationCtorMock).not.toHaveBeenCalled()
   })
 
+  it('delivers a focused-worktree notification when its terminal pane is hidden', async () => {
+    getAllWindowsMock.mockReturnValue([
+      {
+        isDestroyed: () => false,
+        isFocused: () => true
+      } as never
+    ])
+    registerNotificationHandlers({
+      getSettings: () => ({
+        notifications: {
+          enabled: true,
+          agentTaskComplete: true,
+          terminalBell: true,
+          suppressWhenFocused: true
+        }
+      })
+    } as never)
+
+    const result = await getDispatchHandler()(
+      {},
+      {
+        source: 'agent-task-complete',
+        isActiveWorktree: true,
+        isTriggerVisible: false
+      }
+    )
+
+    expect(result).toEqual({ delivered: true })
+    expect(notificationCtorMock).toHaveBeenCalledTimes(1)
+  })
+
   describe('minimized tray attention dot', () => {
     function registerEnabledNotifications(): void {
       registerNotificationHandlers({

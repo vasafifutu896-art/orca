@@ -42,6 +42,7 @@ const WorktreeCardProperties = z
 const STATIC_RIGHT_SIDEBAR_TABS = [
   'explorer',
   'search',
+  'terminal-manager',
   'vault',
   'workspaces',
   'pr-checks',

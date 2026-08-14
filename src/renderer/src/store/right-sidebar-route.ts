@@ -41,6 +41,7 @@ export function normalizeRightSidebarRoute(
   }
   if (
     tab === 'explorer' ||
+    tab === 'terminal-manager' ||
     tab === 'vault' ||
     tab === 'workspaces' ||
     tab === 'pr-checks' ||

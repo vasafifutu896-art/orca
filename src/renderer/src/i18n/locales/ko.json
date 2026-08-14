@@ -7,15 +7,32 @@
       "webDescription": "웹 클라이언트를 다시 시도하거나 페어링된 런타임에 다시 연결하세요."
     }
   },
-  "sidebarTerminalSessions": {
-    "title": "터미널 세션",
+  "terminalManager": {
+    "title": "터미널 관리",
+    "newGroup": "새 그룹",
     "newSession": "새 터미널 세션",
-    "renameInput": "터미널 세션 {{value0}} 이름 변경",
-    "rename": "이름 변경",
-    "pin": "세션 고정",
-    "unpin": "세션 고정 해제",
+    "completionNotificationsOn": "AI 작업 완료 알림 켜짐",
+    "completionNotificationsOff": "AI 작업 완료 알림 꺼짐",
+    "groupName": "그룹 이름",
+    "groupNamePlaceholder": "예: 구현 작업",
+    "noProject": "터미널 세션을 관리할 프로젝트를 여세요.",
+    "ungrouped": "미분류",
+    "renameSessionInput": "세션 {{value0}} 이름 변경",
     "close": "{{value0}} 닫기",
-    "closeAction": "세션 닫기"
+    "renameSession": "세션 이름 변경",
+    "moveToGroup": "그룹으로 이동",
+    "unpin": "세션 고정 해제",
+    "pin": "세션 고정",
+    "closeSession": "세션 닫기",
+    "dragSession": "{{value0}} 세션 끌기",
+    "dragGroup": "{{value0}} 그룹 끌기",
+    "renameGroupInput": "{{value0}} 그룹 이름 변경",
+    "groupActions": "{{value0}} 그룹 작업",
+    "renameGroup": "그룹 이름 변경",
+    "moveGroupUp": "그룹 위로 이동",
+    "moveGroupDown": "그룹 아래로 이동",
+    "deleteGroup": "그룹 삭제",
+    "dropHere": "터미널 세션을 여기에 놓으세요"
   },
   "githubChecks": {
     "retrying": "재시도 중…"
