@@ -86,13 +86,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "7-Zip could not inspect $artifact"
           }
-          if ($listing -match '(?im)^Path = .*app-64\.7z$' -or $listing -match '(?im)^Path = .*nsis7z\.dll$') {
+          # Why: normalize CRLF before anchoring paths; .NET's multiline `$` stops before LF but leaves CR.
+          $archivePaths = @($listing -split '\r?\n' | ForEach-Object {
+            if ($_ -match '^Path = (.+)$') { $Matches[1].Trim() }
+          })
+          if ($archivePaths -match '(?i)(^|[\\/])app-64\.7z$' -or $archivePaths -match '(?i)(^|[\\/])nsis7z\.dll$') {
             throw 'Portable artifact regressed to nested 7z extraction'
           }
-          if ($listing -notmatch '(?im)^Path = .*Orca\.exe$') {
+          if (-not ($archivePaths -match '(?i)(^|[\\/])Orca\.exe$')) {
             throw 'Portable artifact does not contain the directly embedded Orca.exe runtime'
           }
-          if ($listing -notmatch '(?im)^Path = .*resources\\bin\\windows-foreground-permission\.node$') {
+          if (-not ($archivePaths -match '(?i)(^|[\\/])resources[\\/]bin[\\/]windows-foreground-permission\.node$')) {
             throw 'Portable artifact is missing the Windows foreground permission addon'
           }
           $nativeAddon = (Resolve-Path 'dist/win-unpacked/resources/bin/windows-foreground-permission.node').Path
