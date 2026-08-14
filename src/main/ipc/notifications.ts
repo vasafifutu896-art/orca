@@ -27,6 +27,7 @@ import { buildNotificationOptions } from './notification-options'
 import { readNotificationAuthorizationStatus } from './notification-authorization-status'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import { setTrayAttention } from '../tray/system-tray'
+import { activateExistingWindow } from '../window/focus-existing-window'
 import { isMainWindowVisible } from '../window/main-window-visibility'
 import { getTrustedUIRendererWindow } from './ui'
 
@@ -517,14 +518,9 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
             if (!win || win.isDestroyed()) {
               return
             }
-            if (process.platform === 'darwin') {
-              app.focus({ steal: true })
-            }
-            if (win.isMinimized()) {
-              win.restore()
-            }
-            win.show()
-            win.focus()
+            // Why: Windows can leave the clicked notification's Orca instance behind
+            // another app/window unless we reuse the reinforced foreground sequence.
+            activateExistingWindow(win, app)
             win.webContents.send('ui:activateWorktree', {
               repoId,
               worktreeId: args.worktreeId

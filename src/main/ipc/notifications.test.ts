@@ -16,6 +16,7 @@ const {
   notificationIsSupportedMock,
   getAllWindowsMock,
   getTrustedUIRendererWindowMock,
+  appFocusMock,
   shellOpenExternalMock
 } = vi.hoisted(() => {
   const removeHandlerMock = vi.fn()
@@ -37,6 +38,7 @@ const {
   const notificationIsSupportedMock = vi.fn(() => true)
   const getAllWindowsMock = vi.fn(() => [])
   const getTrustedUIRendererWindowMock = vi.fn()
+  const appFocusMock = vi.fn()
   const shellOpenExternalMock = vi.fn()
   return {
     removeHandlerMock,
@@ -50,6 +52,7 @@ const {
     notificationIsSupportedMock,
     getAllWindowsMock,
     getTrustedUIRendererWindowMock,
+    appFocusMock,
     shellOpenExternalMock
   }
 })
@@ -66,7 +69,7 @@ vi.mock('electron', () => ({
     getAllWindows: getAllWindowsMock
   },
   app: {
-    focus: vi.fn()
+    focus: appFocusMock
   },
   shell: {
     openExternal: shellOpenExternalMock
@@ -130,6 +133,7 @@ describe('registerNotificationHandlers', () => {
     getAllWindowsMock.mockReturnValue([])
     getTrustedUIRendererWindowMock.mockReset()
     getTrustedUIRendererWindowMock.mockReturnValue(null)
+    appFocusMock.mockReset()
     shellOpenExternalMock.mockClear()
     setTrayAttentionMock.mockClear()
   })
@@ -558,6 +562,72 @@ describe('registerNotificationHandlers', () => {
       flashFocusedPane: true,
       scrollToBottomIfOutputSinceLastView: true
     })
+  })
+
+  it('reinforces Windows foreground activation when a notification is clicked', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      let alwaysOnTop = false
+      const webContentsSend = vi.fn()
+      const restore = vi.fn()
+      const show = vi.fn()
+      const focus = vi.fn()
+      const moveTop = vi.fn()
+      const setAlwaysOnTop = vi.fn((value: boolean) => {
+        alwaysOnTop = value
+      })
+      const mainWindow = {
+        isDestroyed: () => false,
+        isFocused: () => false,
+        isMinimized: () => true,
+        isAlwaysOnTop: () => alwaysOnTop,
+        restore,
+        show,
+        focus,
+        moveTop,
+        setAlwaysOnTop,
+        webContents: { send: webContentsSend }
+      }
+      getTrustedUIRendererWindowMock.mockReturnValue(mainWindow)
+      registerNotificationHandlers({
+        getSettings: () => ({
+          notifications: {
+            enabled: true,
+            agentTaskComplete: true,
+            terminalBell: true,
+            suppressWhenFocused: false
+          }
+        })
+      } as never)
+
+      const handler = getDispatchHandler()
+      expect(await handler({}, { source: 'agent-task-complete', worktreeId: 'repo::wt1' })).toEqual(
+        { delivered: true }
+      )
+
+      getNotificationEventHandler('click')()
+
+      expect(appFocusMock).toHaveBeenCalledWith({ steal: true })
+      expect(restore).toHaveBeenCalledTimes(1)
+      expect(show).toHaveBeenCalledTimes(1)
+      expect(focus).toHaveBeenCalledTimes(1)
+      expect(moveTop).toHaveBeenCalledTimes(1)
+      expect(setAlwaysOnTop).toHaveBeenCalledWith(true)
+      expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorktree', {
+        repoId: 'repo',
+        worktreeId: 'repo::wt1'
+      })
+
+      vi.advanceTimersByTime(100)
+      expect(appFocusMock).toHaveBeenCalledTimes(2)
+      expect(focus).toHaveBeenCalledTimes(2)
+
+      vi.advanceTimersByTime(150)
+      expect(setAlwaysOnTop).toHaveBeenLastCalledWith(false)
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
   })
 
   it('clears the retained notification fallback timer when the native notification closes', async () => {

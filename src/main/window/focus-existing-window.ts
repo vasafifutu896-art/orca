@@ -66,11 +66,11 @@ function retryFocus(window: BrowserWindow, app: Pick<App, 'focus'>, setTimer: Fo
 
 // Why: shared so the sync success path and the async retry/adopt callback can't
 // drift on win32 reinforcement (moveTop/pulseAlwaysOnTop) or the 100ms focus retry.
-function activateWindow(
+export function activateExistingWindow(
   window: BrowserWindow,
   app: Pick<App, 'focus'>,
-  platform: NodeJS.Platform,
-  setTimer: FocusTimer
+  platform: NodeJS.Platform = process.platform,
+  setTimer: FocusTimer = setTimeout
 ): void {
   safelyFocusApp(app)
   safelyRevealWindow(window)
@@ -117,7 +117,7 @@ function openWindowWithRetry(
           ? existing
           : openWindowWithRetry(opts, platform, setTimer, attempt + 1)
       if (window) {
-        activateWindow(window, opts.app, platform, setTimer)
+        activateExistingWindow(window, opts.app, platform, setTimer)
       }
     }, REOPEN_RETRY_DELAY_MS)
     return null
@@ -143,6 +143,6 @@ export function focusExistingMainWindow(
     openedWindow = true
   }
 
-  activateWindow(window, opts.app, platform, setTimer)
+  activateExistingWindow(window, opts.app, platform, setTimer)
   return openedWindow ? 'opened' : 'focused'
 }
