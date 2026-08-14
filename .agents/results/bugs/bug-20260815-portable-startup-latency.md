@@ -1,6 +1,6 @@
 # Windows portable startup was extremely slow
 
-Status: fix implemented; Windows artifact benchmark pending
+Status: fixed and released in portable multi-instance `.10`; Windows artifact benchmark passed
 
 ## Reported behavior
 
@@ -54,6 +54,18 @@ The zlib layout is the selected balance: it removes the duplicate write and redu
 extraction time by about 35%, while avoiding a 621 MB download. Windows Defender and disk behavior
 can change the absolute result, so the release workflow records the actual visible-window timing
 on `windows-2022` rather than treating the Linux extraction number as a user-facing startup time.
+
+The `.10` Windows 2022 release run measured three alternating baseline/candidate pairs:
+
+| Launch with first window retained | `.7` median | `.10` median | Reduction |
+| --------------------------------- | ----------: | -----------: | --------: |
+| First visible window              |    44.853 s |     19.504 s |     56.5% |
+| Second visible window             |    49.209 s |     22.000 s |     55.3% |
+
+All first and second windows appeared in 3/3 runs, every first window survived the concurrent
+launch, and benchmark cleanup passed. The verified `.10` single-file artifact is 229,204,304 bytes;
+the optional folder-portable ZIP is 239,421,463 bytes. Full raw results are attached to the release
+as `portable-startup-benchmark.json`.
 
 ## Remaining limitation
 

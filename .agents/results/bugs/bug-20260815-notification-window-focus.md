@@ -1,6 +1,6 @@
 # Notification click did not foreground its Orca window on Windows
 
-Status: live cross-process fix implemented and regression-tested; Windows artifact/toast smoke pending
+Status: live cross-process fix and Windows artifact checks passed; interactive Action Center smoke pending
 
 ## Reported behavior
 
@@ -79,12 +79,12 @@ pass. The Windows workflow compiles and loads the N-API addon in both Node and E
 the real named-pipe checks.
 
 The remaining release-evidence gap is an actual Windows Action Center smoke with two freshly built
-`.8` processes: unit tests deterministically simulate the wrong-receiver-to-owner relay but cannot
+`.10` processes: unit tests deterministically simulate the wrong-receiver-to-owner relay but cannot
 make the Windows shell choose a specific COM recipient or observe the final foreground HWND.
 
 ## Scope boundary
 
-This fix guarantees routing between live `.8` processes running at the same Windows integrity
+This fix guarantees routing between live `.10` processes running at the same Windows integrity
 level. A toast clicked after every owner process has exited is intentionally fail-closed rather
 than opening an arbitrary Orca window. Full cold Action Center activation for the single-file
 portable needs a stable COM activator because Electron currently registers the temporary extracted
