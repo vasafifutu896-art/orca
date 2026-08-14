@@ -45,9 +45,13 @@ export function useTabBarItemProjection({
     activeBrowserTabId,
     activeSimulatorTabId,
     activeTabType,
-    expandedPaneByTabId
+    expandedPaneByTabId,
+    showTerminalTabs = true
   } = props
-  const terminalMap = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs])
+  const terminalMap = useMemo(
+    () => new Map((showTerminalTabs ? tabs : []).map((tab) => [tab.id, tab])),
+    [showTerminalTabs, tabs]
+  )
   const editorMap = useMemo(
     () => new Map((editorFiles ?? []).map((file) => [file.tabId ?? file.id, file])),
     [editorFiles]
@@ -56,7 +60,10 @@ export function useTabBarItemProjection({
     () => new Map((browserTabs ?? []).map((tab) => [tab.id, tab])),
     [browserTabs]
   )
-  const terminalIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
+  const terminalIds = useMemo(
+    () => (showTerminalTabs ? tabs.map((tab) => tab.id) : []),
+    [showTerminalTabs, tabs]
+  )
   const editorFileIds = useMemo(
     () => editorFiles?.map((file) => file.tabId ?? file.id) ?? [],
     [editorFiles]

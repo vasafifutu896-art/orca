@@ -23,6 +23,8 @@ export type TabBarProps = {
   onNewSimulatorTab?: () => void
   onOpenEntry?: (args: TabCreateEntryArgs) => Promise<void>
   terminalOnly?: boolean
+  /** Workspace mode renders terminal sessions in the project sidebar instead of the top strip. */
+  showTerminalTabs?: boolean
   showAgentLaunchItems?: boolean
   onNewFileTab?: () => void
   onOpenFileTab?: () => void

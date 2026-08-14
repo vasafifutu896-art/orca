@@ -23,6 +23,7 @@ import type { TabBarItemProjection } from './use-tab-bar-item-projection'
 import type { TabBarItem } from './tab-bar-item-model'
 import { renderTabBarItems } from './tab-bar-item-surface'
 import { renderTabBarStaticCreateMenu } from './tab-bar-static-create-menu'
+import { WorkspaceTerminalSessionLabel } from './WorkspaceTerminalSessionLabel'
 
 export function renderTabBarSurface({
   props,
@@ -44,10 +45,14 @@ export function renderTabBarSurface({
   const {
     worktreeId,
     terminalOnly = false,
+    showTerminalTabs = true,
     showAgentLaunchItems = true,
     onNewTerminalTab,
     onOpenEntry,
-    tabStripChrome = 'default'
+    tabStripChrome = 'default',
+    activeTabId,
+    activeTabType,
+    tabs
   } = props
   const {
     resolvedGroupId,
@@ -109,6 +114,10 @@ export function renderTabBarSurface({
     openMarkdownShortcut,
     queueNewActiveTerminalFocusAfterNewTabMenuClose
   })
+  const activeSidebarTerminal =
+    !showTerminalTabs && activeTabType === 'terminal'
+      ? (tabs.find((tab) => tab.id === activeTabId) ?? null)
+      : null
 
   return (
     <div
@@ -117,6 +126,7 @@ export function renderTabBarSurface({
       // Why: preload routes native OS drops by this marker — only the tab strip opens files in the editor, not terminal panes.
       data-native-file-drop-target="editor"
     >
+      {activeSidebarTerminal ? <WorkspaceTerminalSessionLabel tab={activeSidebarTerminal} /> : null}
       {tabStripOverflowState.hasOverflow ? (
         <Tooltip>
           <TooltipTrigger asChild>

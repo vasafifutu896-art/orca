@@ -83,6 +83,7 @@ export default function TabGroupPanel({
       activeTabId={activeTab?.contentType === 'terminal' ? activeTab.entityId : null}
       groupId={groupId}
       worktreeId={worktreeId}
+      showTerminalTabs={false}
       expandedPaneByTabId={model.expandedPaneByTabId}
       onActivate={commands.activateTerminal}
       onClose={(terminalId) => {

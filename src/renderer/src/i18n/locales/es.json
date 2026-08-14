@@ -7,6 +7,16 @@
       "webDescription": "Vuelva a cargar el cliente web o vuelva a conectarse al servidor Orca vinculado."
     }
   },
+  "sidebarTerminalSessions": {
+    "title": "Sesiones de terminal",
+    "newSession": "Nueva sesión de terminal",
+    "renameInput": "Cambiar el nombre de la sesión {{value0}}",
+    "rename": "Cambiar nombre",
+    "pin": "Fijar sesión",
+    "unpin": "Desfijar sesión",
+    "close": "Cerrar {{value0}}",
+    "closeAction": "Cerrar sesión"
+  },
   "githubChecks": {
     "retrying": "Reintentando…"
   },

@@ -2425,6 +2425,7 @@ function Terminal(): React.JSX.Element | null {
             tabs={tabs}
             activeTabId={activeTabId}
             worktreeId={renderedActiveWorktreeId}
+            showTerminalTabs={false}
             onActivate={handleActivateTab}
             onClose={handleCloseTab}
             onCloseOthers={handleCloseOthers}

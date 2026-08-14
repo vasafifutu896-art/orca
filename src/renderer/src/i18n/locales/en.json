@@ -7,6 +7,16 @@
       "webDescription": "Retry the web client or reconnect to the paired runtime."
     }
   },
+  "sidebarTerminalSessions": {
+    "title": "Terminal sessions",
+    "newSession": "New terminal session",
+    "renameInput": "Rename terminal session {{value0}}",
+    "rename": "Rename",
+    "pin": "Pin session",
+    "unpin": "Unpin session",
+    "close": "Close {{value0}}",
+    "closeAction": "Close session"
+  },
   "browser": {
     "loadFailure": {
       "connectionNotSecure": "Connection isn't secure",
