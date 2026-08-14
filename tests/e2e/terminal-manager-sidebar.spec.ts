@@ -106,6 +106,7 @@ test('manages project terminal groups in the right sidebar with live AI state', 
 
   await expect(manager).toBeVisible()
   await expect(sessions).toHaveCount(3)
+  await expect(manager.getByRole('checkbox')).toHaveCount(0)
   await expect(manager.getByText('Codex implementation', { exact: true })).toBeVisible()
   await expect(manager.getByText('Tests', { exact: true })).toBeVisible()
   await expect(manager.getByText('Server logs', { exact: true })).toBeVisible()
@@ -124,7 +125,7 @@ test('manages project terminal groups in the right sidebar with live AI state', 
     'Codex implementation'
   )
 
-  const completionAlerts = manager.locator('button[aria-pressed]').first()
+  const completionAlerts = manager.getByRole('button', { name: 'AI completion alerts' })
   const alertsInitiallyEnabled = (await completionAlerts.getAttribute('aria-pressed')) === 'true'
   await completionAlerts.click()
   await expect(completionAlerts).toHaveAttribute(
@@ -156,7 +157,7 @@ test('manages project terminal groups in the right sidebar with live AI state', 
     `[data-terminal-manager-group-id="${implementationGroupId}"]`
   )
 
-  await createdGroup.getByRole('button', { name: 'Implementation group actions' }).click()
+  await createdGroup.getByText('Implementation', { exact: true }).click({ button: 'right' })
   await orcaPage.getByRole('menuitem', { name: 'Rename group' }).click()
   const renameGroupInput = manager.getByRole('textbox', { name: 'Rename group Implementation' })
   await expect(renameGroupInput).toBeVisible()
@@ -192,8 +193,10 @@ test('manages project terminal groups in the right sidebar with live AI state', 
   const secondSession = manager.locator(
     `[data-terminal-manager-session-id="${seeded.secondTabId}"]`
   )
-  await firstSession.getByRole('checkbox', { name: 'Select session Codex implementation' }).click()
-  await secondSession.getByRole('checkbox', { name: 'Select session Tests' }).click()
+  await firstSession.getByRole('button', { name: 'Codex implementation', exact: true }).click()
+  await secondSession
+    .getByRole('button', { name: 'Tests', exact: true })
+    .click({ modifiers: ['Control'] })
   await expect(manager.locator('[data-terminal-manager-selection-count="2"]')).toBeVisible()
   await dragWithPointer(
     orcaPage,
@@ -219,7 +222,7 @@ test('manages project terminal groups in the right sidebar with live AI state', 
   const thirdBeforeMove = manager.locator(
     `[data-terminal-manager-session-id="${seeded.thirdTabId}"]`
   )
-  await thirdBeforeMove.getByRole('checkbox', { name: 'Select session Server logs' }).click()
+  await thirdBeforeMove.getByRole('button', { name: 'Server logs', exact: true }).click()
   await dragWithPointer(
     orcaPage,
     thirdBeforeMove.locator('[data-terminal-manager-session-drag-handle="true"]'),

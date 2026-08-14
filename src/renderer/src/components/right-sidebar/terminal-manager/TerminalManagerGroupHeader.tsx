@@ -14,6 +14,12 @@ import { translate } from '@/i18n/i18n'
 import { isImeCompositionKeyDown } from '@/lib/ime-composition-keyboard-event'
 import { Button } from '@/components/ui/button'
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -122,7 +128,7 @@ export function TerminalManagerGroupHeader({
     })
   }, [])
 
-  return (
+  const header = (
     <div className="group/group flex h-8 min-w-0 items-center px-1">
       {group ? <TerminalManagerGroupDragHandle group={group} /> : <span className="w-1" />}
       {isRenaming ? (
@@ -213,5 +219,21 @@ export function TerminalManagerGroupHeader({
         </DropdownMenu>
       ) : null}
     </div>
+  )
+
+  if (!group) {
+    return header
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{header}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={beginRename}>
+          <Pencil />
+          {translate('terminalManager.renameGroup', 'Rename group')}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }

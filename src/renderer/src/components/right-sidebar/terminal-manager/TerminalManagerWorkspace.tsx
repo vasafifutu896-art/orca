@@ -178,7 +178,6 @@ export function TerminalManagerWorkspace({
               groupIndex={index}
               isSessionSelected={selection.isSelected}
               onSelectSession={selection.select}
-              onToggleSessionSelection={selection.toggle}
               onToggle={(groupId) =>
                 setLayout((current) => toggleTerminalManagerGroup(current, groupId))
               }
@@ -202,7 +201,6 @@ export function TerminalManagerWorkspace({
             groupIndex={layout.groups.length}
             isSessionSelected={selection.isSelected}
             onSelectSession={selection.select}
-            onToggleSessionSelection={selection.toggle}
             onToggle={() => setLayout((current) => toggleTerminalManagerGroup(current, null))}
             onRename={() => undefined}
             onDelete={() => undefined}

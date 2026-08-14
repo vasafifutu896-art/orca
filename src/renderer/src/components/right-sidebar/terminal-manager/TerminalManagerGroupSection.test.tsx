@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { TerminalManagerGroupHeader } from './TerminalManagerGroupHeader'
 
 describe('TerminalManagerGroupHeader', () => {
-  it('keeps the rename editor focused after the actions menu closes and commits the name', async () => {
+  it('renames a group from its right-click menu', async () => {
     const group = { id: 'group-1', name: 'Implementation', collapsed: false }
     const onRename = vi.fn()
     const user = userEvent.setup()
@@ -27,7 +27,10 @@ describe('TerminalManagerGroupHeader', () => {
       </DndContext>
     )
 
-    await user.click(screen.getByRole('button', { name: 'Implementation group actions' }))
+    await user.pointer({
+      target: screen.getByText('Implementation', { exact: true }),
+      keys: '[MouseRight]'
+    })
     await user.click(await screen.findByRole('menuitem', { name: 'Rename group' }))
     const input = await screen.findByRole('textbox', { name: 'Rename group Implementation' })
     await user.clear(input)

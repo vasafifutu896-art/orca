@@ -21,7 +21,6 @@ type Props = {
   onRename: (groupId: string, name: string) => void
   onSelectSession: (sessionId: string, gesture: TerminalManagerSelectionGesture) => void
   onToggle: (groupId: string | null) => void
-  onToggleSessionSelection: (sessionId: string) => void
   sessions: readonly WorktreeTerminalSession[]
 }
 
@@ -38,7 +37,6 @@ export function TerminalManagerGroupSection({
   onRename,
   onSelectSession,
   onToggle,
-  onToggleSessionSelection,
   sessions
 }: Props): React.JSX.Element {
   const groupId = group?.id ?? null
@@ -85,7 +83,6 @@ export function TerminalManagerGroupSection({
                 groups={groups}
                 onMove={onMoveSession}
                 onSelect={onSelectSession}
-                onToggleSelection={onToggleSessionSelection}
               />
             ))
           ) : (

@@ -34,8 +34,7 @@
     "deleteGroup": "删除分组",
     "dropHere": "将终端会话拖放到此处",
     "selectedCount": "已选择 {{value0}} 个会话",
-    "clearSelection": "清除选择",
-    "selectSession": "选择会话 {{value0}}"
+    "clearSelection": "清除选择"
   },
   "githubChecks": {
     "retrying": "正在重试..."

@@ -15,7 +15,6 @@ export type TerminalManagerSelection = {
   prepareBatchAction: (sourceSessionId: string) => string[]
   select: (sessionId: string, gesture: TerminalManagerSelectionGesture) => void
   selectedIds: readonly string[]
-  toggle: (sessionId: string) => void
 }
 
 export function useTerminalManagerSelection(
@@ -46,13 +45,6 @@ export function useTerminalManagerSelection(
       setState((current) =>
         resolveTerminalManagerSelection(orderedSessionIds, current, sessionId, gesture)
       ),
-    selectedIds: normalized.selectedIds,
-    toggle: (sessionId) =>
-      setState((current) =>
-        resolveTerminalManagerSelection(orderedSessionIds, current, sessionId, {
-          additive: true,
-          range: false
-        })
-      )
+    selectedIds: normalized.selectedIds
   }
 }

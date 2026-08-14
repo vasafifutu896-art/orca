@@ -9,7 +9,6 @@ import { useTabAgent } from '@/lib/use-tab-agent'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { TerminalTabLeadingIcon } from '../../tab-bar/TerminalTabLeadingIcon'
 import {
@@ -38,7 +37,6 @@ type Props = {
   isSelected: boolean
   onMove: (sessionId: string, groupId: string | null, beforeSessionId?: string) => void
   onSelect: (sessionId: string, gesture: TerminalManagerSelectionGesture) => void
-  onToggleSelection: (sessionId: string) => void
   session: WorktreeTerminalSession
 }
 
@@ -49,7 +47,6 @@ export function TerminalManagerSessionRow({
   isSelected,
   onMove,
   onSelect,
-  onToggleSelection,
   session
 }: Props): React.JSX.Element {
   const { tab, unifiedTab } = session
@@ -176,17 +173,6 @@ export function TerminalManagerSessionRow({
       data-current={isActive ? 'true' : undefined}
       data-agent-activity-status={activityStatus}
     >
-      <Checkbox
-        checked={isSelected}
-        className="ml-1 size-3.5 opacity-0 group-hover/session:opacity-100 data-[state=checked]:opacity-100 focus-visible:opacity-100"
-        data-terminal-manager-session-select={tab.id}
-        aria-label={translate('terminalManager.selectSession', 'Select session {{value0}}', {
-          value0: displayTitle
-        })}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-        onCheckedChange={() => onToggleSelection(tab.id)}
-      />
       <button
         ref={setActivatorNodeRef}
         type="button"
@@ -231,6 +217,7 @@ export function TerminalManagerSessionRow({
           size="sm"
           className="h-8 min-w-0 flex-1 justify-start gap-0 rounded-md px-1.5 text-xs font-normal hover:bg-transparent"
           aria-current={isActive ? 'page' : undefined}
+          aria-pressed={isSelected}
           aria-label={displayTitle}
           onClick={(event) => {
             const additive = event.ctrlKey || event.metaKey

@@ -34,8 +34,7 @@
     "deleteGroup": "그룹 삭제",
     "dropHere": "터미널 세션을 여기에 놓으세요",
     "selectedCount": "터미널 세션 {{value0}}개 선택됨",
-    "clearSelection": "선택 해제",
-    "selectSession": "{{value0}} 세션 선택"
+    "clearSelection": "선택 해제"
   },
   "githubChecks": {
     "retrying": "재시도 중…"

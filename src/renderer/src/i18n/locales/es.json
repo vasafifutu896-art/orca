@@ -34,8 +34,7 @@
     "deleteGroup": "Eliminar grupo",
     "dropHere": "Suelte aquí las sesiones de terminal",
     "selectedCount": "{{value0}} sesiones seleccionadas",
-    "clearSelection": "Borrar selección",
-    "selectSession": "Seleccionar sesión {{value0}}"
+    "clearSelection": "Borrar selección"
   },
   "githubChecks": {
     "retrying": "Reintentando…"

@@ -34,8 +34,7 @@
     "deleteGroup": "グループを削除",
     "dropHere": "ターミナルセッションをここにドロップ",
     "selectedCount": "{{value0}} 個のセッションを選択中",
-    "clearSelection": "選択を解除",
-    "selectSession": "セッション {{value0}} を選択"
+    "clearSelection": "選択を解除"
   },
   "githubChecks": {
     "retrying": "再試行中…"
