@@ -1850,7 +1850,14 @@ export type RepoSlice = {
     runtimeEnvironmentId?: string | null
     mode: 'group' | 'separate'
   }) => Promise<ProjectGroupImportResult | null>
-  createProjectGroup: (name: string) => Promise<ProjectGroup | null>
+  createProjectGroup: (
+    name: string,
+    options?: {
+      parentPath?: string | null
+      connectionId?: string | null
+      runtimeEnvironmentId?: string | null
+    }
+  ) => Promise<ProjectGroup | null>
   createFolderWorkspace: (
     args: {
       projectGroupId: string
@@ -2700,20 +2707,27 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
     }
   },
 
-  createProjectGroup: async (name) => {
+  createProjectGroup: async (name, options) => {
     try {
-      const target = getActiveRuntimeTarget(get().settings)
+      const target = getActiveRuntimeTarget(
+        settingsForRuntimeOwner(get().settings, options?.runtimeEnvironmentId)
+      )
+      const createArgs = {
+        name,
+        createdFrom: 'manual' as const,
+        ...(options && 'parentPath' in options ? { parentPath: options.parentPath ?? null } : {}),
+        ...(options && 'connectionId' in options
+          ? { connectionId: options.connectionId ?? null }
+          : {})
+      }
       const group =
         target.kind === 'local'
-          ? await window.api.projectGroups.create({
-              name,
-              createdFrom: 'manual'
-            })
+          ? await window.api.projectGroups.create(createArgs)
           : (
               await callRuntimeRpc<{ group: ProjectGroup }>(
                 target,
                 'projectGroup.create',
-                { name, createdFrom: 'manual' },
+                createArgs,
                 { timeoutMs: 15_000 }
               )
             ).group

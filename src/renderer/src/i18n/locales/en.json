@@ -96,7 +96,8 @@
     "help": "Help",
     "paste": "Paste",
     "copy": "Copy",
-    "selectAll": "Select All"
+    "selectAll": "Select All",
+    "newWindow": "New Orca Window"
   },
   "tray": {
     "openOrca": "Open Orca",
@@ -5445,6 +5446,32 @@
           "worktreeRoot": "Worktree root",
           "add": "Add",
           "rootHelp": "Orca will recognize worktrees beneath this folder."
+        },
+        "SshServersPanel": {
+          "connected": "Connected",
+          "connecting": "Connecting…",
+          "deployingRelay": "Starting relay…",
+          "reconnecting": "Reconnecting…",
+          "authFailed": "Authentication failed",
+          "reconnectFailed": "Reconnect failed",
+          "error": "Connection error",
+          "disconnected": "Disconnected",
+          "home": "Home",
+          "openFailed": "Could not open {{value0}}",
+          "title": "Servers",
+          "manage": "Manage SSH servers",
+          "add": "Add SSH server",
+          "loading": "Loading servers…",
+          "addFirst": "Add your first SSH server",
+          "openLabel": "{{value0}}, {{value1}}. Double-click to open a new terminal.",
+          "hint": "Double-click a server to open a terminal"
+        },
+        "sshServerSession": {
+          "connectionNotReady": "SSH connection did not become ready.",
+          "workspaceCreateFailed": "Could not create a workspace for this SSH server.",
+          "homeUnavailable": "The SSH server did not return its home directory.",
+          "workspaceOpenFailed": "Could not open the SSH server workspace.",
+          "terminalOpenFailed": "Could not open a terminal for this SSH server."
         }
       },
       "shared": {

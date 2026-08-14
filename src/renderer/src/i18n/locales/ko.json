@@ -69,7 +69,8 @@
     "help": "도움말",
     "paste": "붙여넣기",
     "copy": "복사",
-    "selectAll": "모두 선택"
+    "selectAll": "모두 선택",
+    "newWindow": "새 Orca 창"
   },
   "tray": {
     "openOrca": "Orca 열기",
@@ -5132,6 +5133,32 @@
           "3b7ea51793": "검색 지우기",
           "7f1c2e94a5": "검색어가 너무 깁니다 — 보드가 필터링되지 않았습니다",
           "9a4d0f6b21": "너무 김"
+        },
+        "SshServersPanel": {
+          "connected": "연결됨",
+          "connecting": "연결 중…",
+          "deployingRelay": "릴레이 시작 중…",
+          "reconnecting": "다시 연결 중…",
+          "authFailed": "인증 실패",
+          "reconnectFailed": "재연결 실패",
+          "error": "연결 오류",
+          "disconnected": "연결 끊김",
+          "home": "홈",
+          "openFailed": "{{value0}}을(를) 열 수 없습니다",
+          "title": "서버",
+          "manage": "SSH 서버 관리",
+          "add": "SSH 서버 추가",
+          "loading": "서버 불러오는 중…",
+          "addFirst": "첫 SSH 서버 추가",
+          "openLabel": "{{value0}}, {{value1}}. 새 터미널을 열려면 더블클릭하세요.",
+          "hint": "서버를 더블클릭하면 터미널이 열립니다"
+        },
+        "sshServerSession": {
+          "connectionNotReady": "SSH 연결 준비가 완료되지 않았습니다.",
+          "workspaceCreateFailed": "이 SSH 서버의 워크스페이스를 만들 수 없습니다.",
+          "homeUnavailable": "SSH 서버에서 홈 디렉터리를 확인할 수 없습니다.",
+          "workspaceOpenFailed": "SSH 서버 워크스페이스를 열 수 없습니다.",
+          "terminalOpenFailed": "이 SSH 서버의 터미널을 열 수 없습니다."
         }
       },
       "shared": {

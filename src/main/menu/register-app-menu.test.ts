@@ -37,6 +37,7 @@ const isMac = process.platform === 'darwin'
 
 function buildMenuOptions() {
   return {
+    onOpenNewInstance: vi.fn(),
     onCheckForUpdates: vi.fn(),
     onOpenSettings: vi.fn(),
     onOpenSetupGuide: vi.fn(),
@@ -107,6 +108,17 @@ describe('registerAppMenu', () => {
     const forceReloadItem = viewSubmenu.find((item) => item.label === expectedForceReloadLabel)
     expect(forceReloadItem).toBeDefined()
     expect(forceReloadItem?.accelerator).toBeUndefined()
+  })
+
+  it('launches another isolated Orca window from the native menu', () => {
+    const options = buildMenuOptions()
+    registerAppMenu(options)
+
+    const parentMenu = getSubmenu(getTemplate(), isMac ? 'Window' : 'File')
+    const newWindowItem = parentMenu.find((item) => item.label === 'New Orca Window')
+    newWindowItem?.click?.({} as never, {} as never, {} as never)
+
+    expect(options.onOpenNewInstance).toHaveBeenCalledTimes(1)
   })
 
   it('reloads the focused window from the view menu', () => {

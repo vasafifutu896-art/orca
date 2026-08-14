@@ -24,6 +24,7 @@ export function getNextDefaultOnAppearanceSettingValue(current: boolean | undefi
 }
 
 type RegisterAppMenuOptions = {
+  onOpenNewInstance: () => void
   onOpenSettings: () => void
   onOpenSetupGuide: (window?: Electron.BaseWindow | null) => void
   onOpenFeatureTour: (window?: Electron.BaseWindow | null) => void
@@ -41,10 +42,12 @@ type RegisterAppMenuOptions = {
   // Why: the macOS app-menu title. Passed the per-branch dev label since
   // app.name is now pinned to a stable value for Keychain-key stability.
   appMenuLabel?: string
+  showNewInstance?: boolean
 }
 
 function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
   const {
+    onOpenNewInstance,
     onOpenSettings,
     onOpenSetupGuide,
     onOpenFeatureTour,
@@ -118,6 +121,11 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
     click: () => onOpenSettings()
   }
 
+  const newInstanceLabel = translateMain('menu.newWindow', 'New Orca Window')
+  const newInstanceItem = { label: newInstanceLabel, click: onOpenNewInstance }
+  const newInstanceItems: Electron.MenuItemConstructorOptions[] =
+    options.showNewInstance === false ? [] : [newInstanceItem, { type: 'separator' }]
+
   const featureTourItem: Electron.MenuItemConstructorOptions = {
     label: translateMain('menu.exploreOrca', 'Explore Orca'),
     click: (_menuItem, window) => onOpenFeatureTour(window)
@@ -163,6 +171,7 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
     submenu: [
       settingsItem,
       { type: 'separator' },
+      ...newInstanceItems,
       { role: 'quit', label: translateMain('menu.exit', 'Exit') }
     ]
   }
@@ -312,7 +321,7 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
 
   const windowMenu: Electron.MenuItemConstructorOptions = {
     label: translateMain('menu.window', 'Window'),
-    submenu: [{ role: 'minimize' }, { role: 'zoom' }]
+    submenu: [...(isMac ? newInstanceItems : []), { role: 'minimize' }, { role: 'zoom' }]
   }
 
   const helpMenu: Electron.MenuItemConstructorOptions = {

@@ -177,6 +177,11 @@ import {
   shouldSkipSingleInstanceLock,
   SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE
 } from './startup/single-instance-lock'
+import {
+  configureMultiInstanceProfile,
+  formatMultiInstanceWindowTitle
+} from './startup/multi-instance-profile'
+import { launchNewDesktopInstance } from './startup/new-desktop-instance'
 import { startEventLoopStallProbe } from './startup/event-loop-stall-probe'
 import { startMainThreadChurnProbe } from './diagnostics/main-thread-churn-probe'
 import {
@@ -663,6 +668,16 @@ if (app.isPackaged && process.platform !== 'win32') {
   })
 }
 configureDevUserDataPath(is.dev)
+const multiInstanceProfile = configureMultiInstanceProfile({
+  app,
+  argv: process.argv,
+  isDev: is.dev,
+  isServeMode
+})
+if (multiInstanceProfile) {
+  app.once('will-quit', multiInstanceProfile.release)
+  process.once('exit', () => multiInstanceProfile.release())
+}
 configureOrcaUserDataPathEnv()
 installServeSupervisorDisconnectQuit(isServeMode)
 
@@ -816,14 +831,24 @@ if (startupDiagnosticsEnabled) {
   })
 }
 if (!hasSingleInstanceLock) {
+  multiInstanceProfile?.release()
   // Why: a false-negative lock loss otherwise looks like a silent crash on packaged macOS; `open --stderr` can capture this line.
   logSingleInstanceLockFailure()
   // Why: a graceful quit is deferred pre-ready, so this launch would still walk into Linux display init and SIGSEGV (#11935).
   app.exit(SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE)
 }
+const hasMultiInstanceClaim = hasSingleInstanceLock
+  ? (multiInstanceProfile?.ensureClaimed() ?? true)
+  : false
+if (hasSingleInstanceLock && !hasMultiInstanceClaim) {
+  console.error(
+    '[multi-instance] The selected instance profile is already claimed; exiting before writing profile state.'
+  )
+  app.exit(SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE)
+}
 
 // Why: when another process holds the lock we've already exited; skip file-writing side effects so this transient process never touches userData.
-if (hasSingleInstanceLock) {
+if (hasSingleInstanceLock && hasMultiInstanceClaim) {
   // Why: couple to dev-parent only for electron-vite desktop runs; `orca serve`'s parent (CLI shim/background shell) isn't the intended server lifetime.
   const shouldCoupleToDevParent = is.dev && !isServeMode
   installDevParentDisconnectQuit(shouldCoupleToDevParent)
@@ -1353,7 +1378,7 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
     },
     deferLoad: true,
     ...(options.revealOnDidFinishLoad === true ? { revealOnDidFinishLoad: true } : {}),
-    title: devInstanceIdentity.name,
+    title: formatMultiInstanceWindowTitle(devInstanceIdentity.name, multiInstanceProfile?.slot),
     getKeybindings: () => keybindings?.getOverrides(),
     onBeforeReload: ({ ignoreCache, webContentsId }) => {
       if (mainWindow?.webContents.id === webContentsId) {
@@ -2867,6 +2892,10 @@ void app.whenReady().then(async () => {
 
   registerAppMenu({
     appMenuLabel: devInstanceIdentity.name,
+    showNewInstance: multiInstanceProfile !== null,
+    onOpenNewInstance: () => {
+      launchNewDesktopInstance()
+    },
     onCheckForUpdates: (options) => runUserInitiatedUpdateCheck(options),
     onBeforeReload: ({ ignoreCache, webContentsId }) => {
       if (mainWindow?.webContents.id === webContentsId) {

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTestStore } from './store-test-helpers'
 import type { Project, ProjectHostSetup } from '../../../../shared/project-types'
+import type { ProjectGroup } from '../../../../shared/project-group-types'
 import type { Repo } from '../../../../shared/repo-types'
+import { toSshExecutionHostId } from '../../../../shared/execution-host'
 import {
   createCompatibleRuntimeStatusResponseIfNeeded,
   type RuntimeEnvironmentCallRequest
@@ -23,6 +25,7 @@ const projectsSetupExistingFolder = vi.fn()
 const projectsUpdateHostSetup = vi.fn()
 const projectsDeleteHostSetup = vi.fn()
 const reposList = vi.fn()
+const projectGroupsCreate = vi.fn()
 const runtimeEnvironmentCall = vi.fn()
 const runtimeEnvironmentTransportCall = vi.fn()
 const dispatchEventMock = vi.fn()
@@ -36,6 +39,7 @@ beforeEach(() => {
   projectsUpdateHostSetup.mockReset()
   projectsDeleteHostSetup.mockReset()
   reposList.mockReset()
+  projectGroupsCreate.mockReset()
   runtimeEnvironmentCall.mockReset()
   runtimeEnvironmentTransportCall.mockReset()
   dispatchEventMock.mockReset()
@@ -47,6 +51,7 @@ beforeEach(() => {
       repos: {
         list: reposList
       },
+      projectGroups: { create: projectGroupsCreate },
       projects: {
         list: projectsList,
         update: projectsUpdate,
@@ -71,6 +76,40 @@ function expectInstalledSkillRefreshEvent(): void {
 }
 
 describe('repo slice project runtime updates', () => {
+  it('creates an SSH group locally even when a paired runtime is focused', async () => {
+    const sshGroup: ProjectGroup = {
+      id: 'group-ssh',
+      name: 'Build box',
+      parentPath: '/home/build',
+      parentGroupId: null,
+      connectionId: 'ssh-1',
+      createdFrom: 'manual',
+      tabOrder: 0,
+      isCollapsed: false,
+      color: null,
+      createdAt: 1,
+      updatedAt: 1
+    }
+    projectGroupsCreate.mockResolvedValue(sshGroup)
+    const store = createTestStore()
+    store.setState({ settings: { activeRuntimeEnvironmentId: 'runtime-1' } as never })
+
+    await expect(
+      store.getState().createProjectGroup(sshGroup.name, {
+        parentPath: sshGroup.parentPath,
+        connectionId: sshGroup.connectionId,
+        runtimeEnvironmentId: null
+      })
+    ).resolves.toEqual({ ...sshGroup, executionHostId: toSshExecutionHostId('ssh-1') })
+    expect(projectGroupsCreate).toHaveBeenCalledWith({
+      name: sshGroup.name,
+      parentPath: sshGroup.parentPath,
+      connectionId: sshGroup.connectionId,
+      createdFrom: 'manual'
+    })
+    expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
+  })
+
   it('clears local runtime-scoped detection state when project runtime changes', async () => {
     const project: Project = {
       id: 'project-1',
