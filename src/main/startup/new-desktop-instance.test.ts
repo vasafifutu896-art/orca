@@ -22,4 +22,19 @@ describe('launchNewDesktopInstance', () => {
     expect(once).toHaveBeenCalledWith('error', expect.any(Function))
     expect(unref).toHaveBeenCalledTimes(1)
   })
+
+  it('relaunches the outer portable executable instead of its temporary extracted app', () => {
+    const spawn = vi.fn(() => ({ unref: vi.fn(), once: vi.fn() }))
+
+    launchNewDesktopInstance({
+      argv: ['C:\\Temp\\portable\\Orca.exe', '--orca-instance-slot=3'],
+      env: { PORTABLE_EXECUTABLE_FILE: 'D:\\Apps\\orca-windows-portable.exe' },
+      spawn
+    })
+
+    expect(spawn).toHaveBeenCalledWith('D:\\Apps\\orca-windows-portable.exe', [], {
+      detached: true,
+      stdio: 'ignore'
+    })
+  })
 })

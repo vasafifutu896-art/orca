@@ -40,6 +40,8 @@ const originalPlatform = process.platform
 const originalExecPath = process.execPath
 const originalResourcesPath = process.resourcesPath
 const originalLocalAppData = process.env.LOCALAPPDATA
+const originalPortableExecutableDir = process.env.PORTABLE_EXECUTABLE_DIR
+const originalPortableExecutableFile = process.env.PORTABLE_EXECUTABLE_FILE
 
 function setProcessProp(key: string, value: unknown): void {
   Object.defineProperty(process, key, { value, configurable: true, writable: true })
@@ -87,6 +89,8 @@ beforeEach(() => {
   localAppDataDir = join(tempDir, 'localAppData')
   mkdirSync(localAppDataDir, { recursive: true })
   process.env.LOCALAPPDATA = localAppDataDir
+  delete process.env.PORTABLE_EXECUTABLE_DIR
+  delete process.env.PORTABLE_EXECUTABLE_FILE
   buildInstallFixture(installDir)
   electronApp.isPackaged = true
   electronApp.userDataPath = userDataDir
@@ -104,6 +108,16 @@ afterEach(() => {
     delete process.env.LOCALAPPDATA
   } else {
     process.env.LOCALAPPDATA = originalLocalAppData
+  }
+  if (originalPortableExecutableDir === undefined) {
+    delete process.env.PORTABLE_EXECUTABLE_DIR
+  } else {
+    process.env.PORTABLE_EXECUTABLE_DIR = originalPortableExecutableDir
+  }
+  if (originalPortableExecutableFile === undefined) {
+    delete process.env.PORTABLE_EXECUTABLE_FILE
+  } else {
+    process.env.PORTABLE_EXECUTABLE_FILE = originalPortableExecutableFile
   }
   try {
     rmSync(tempDir, { recursive: true, force: true })
@@ -194,6 +208,17 @@ describe('materializeRelocatedDaemonHost', () => {
     const result = materializeRelocatedDaemonHost()
     expect(result?.execPath).toBe(join(dest, 'orca-terminal-daemon.exe'))
     expect(existsSync(sentinel)).toBe(true)
+  })
+
+  it('keeps the relocated daemon inside portable userData', () => {
+    process.env.PORTABLE_EXECUTABLE_DIR = dirname(installDir)
+    process.env.PORTABLE_EXECUTABLE_FILE = join(dirname(installDir), 'orca-portable.exe')
+
+    const result = materializeRelocatedDaemonHost()
+    const dest = join(userDataDir, 'daemon-host', '9.9.9')
+
+    expect(result?.execPath).toBe(join(dest, 'orca-terminal-daemon.exe'))
+    expect(existsSync(join(localAppDataDir, 'Orca', 'daemon-host'))).toBe(false)
   })
 
   it('fails open on a missing required input, leaving no dest or staging dir', () => {

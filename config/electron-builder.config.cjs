@@ -22,8 +22,7 @@ const { verifySkillsCliRuntime } = require('./scripts/verify-skills-cli-runtime.
 const isMacHourly = process.env.ORCA_MAC_HOURLY === '1'
 const isMacDaily = process.env.ORCA_MAC_DAILY === '1'
 const isMacAdhoc = process.env.ORCA_MAC_ADHOC === '1'
-const isMacRelease =
-  process.env.ORCA_MAC_RELEASE === '1' || isMacHourly || isMacDaily || isMacAdhoc
+const isMacRelease = process.env.ORCA_MAC_RELEASE === '1' || isMacHourly || isMacDaily || isMacAdhoc
 const isLinuxArm64Release = process.env.ORCA_LINUX_ARM64_RELEASE === '1'
 const localBuildVersion = isMacRelease ? undefined : process.env.ORCA_LOCAL_BUILD_VERSION
 const devChannelBuildVersion = isMacHourly
@@ -329,6 +328,13 @@ module.exports = {
     // (which lives outside the install dir under LOCALAPPDATA by design). Guarded
     // by ${isUpdated} inside so it never runs during an update's uninstallOldVersion.
     include: resolve(__dirname, 'nsis', 'daemon-host-uninstall.nsh')
+  },
+  portable: {
+    artifactName: 'orca-windows-portable.${ext}',
+    requestExecutionLevel: 'user',
+    // Why: every launch needs a unique extraction directory so concurrent
+    // portable instances cannot remove or overwrite one another's runtime.
+    unpackDirName: false
   },
   mac: {
     icon: 'resources/build/icon.icns',

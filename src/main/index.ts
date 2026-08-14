@@ -132,6 +132,7 @@ import {
   installUncaughtPipeErrorGuard,
   installUnhandledRejectionLogging
 } from './startup/main-process-error-guards'
+import { configurePortableUserDataPath } from './startup/portable-profile'
 import { enableRendererHeapHeadroom } from './startup/renderer-heap-headroom'
 import { argvRequestsServeMode, normalizeServeModeArgv } from './startup/serve-mode-argv'
 import { ensureVirtualDisplayForHeadlessServe } from './startup/ensure-virtual-display'
@@ -668,6 +669,7 @@ if (app.isPackaged && process.platform !== 'win32') {
   })
 }
 configureDevUserDataPath(is.dev)
+configurePortableUserDataPath({ app, isDev: is.dev })
 const multiInstanceProfile = configureMultiInstanceProfile({
   app,
   argv: process.argv,

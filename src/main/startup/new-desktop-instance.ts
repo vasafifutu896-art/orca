@@ -19,12 +19,14 @@ export function launchNewDesktopInstance(
   options: {
     executable?: string
     argv?: readonly string[]
+    env?: NodeJS.ProcessEnv
     spawn?: DesktopInstanceSpawner
     onError?: (error: Error) => void
   } = {}
 ): boolean {
   try {
-    const executable = options.executable ?? process.execPath
+    const portableExecutable = (options.env ?? process.env).PORTABLE_EXECUTABLE_FILE?.trim()
+    const executable = options.executable ?? (portableExecutable || process.execPath)
     const argv = options.argv ?? process.argv
     const args = argv.slice(1).filter((arg) => !arg.startsWith(MULTI_INSTANCE_SLOT_ARG_PREFIX))
     const child = (options.spawn ?? spawnDesktopInstance)(executable, args, {

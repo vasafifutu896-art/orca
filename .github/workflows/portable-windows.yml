@@ -1,0 +1,87 @@
+name: Portable Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'portable-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Windows portable EXE
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-portable-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-builder-portable-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify portable boundaries
+        run: >-
+          pnpm exec vitest run --config config/vitest.config.ts
+          src/main/startup/portable-profile.test.ts
+          src/main/startup/new-desktop-instance.test.ts
+          src/main/daemon/daemon-host-relocation.test.ts
+          config/scripts/electron-builder-config.test.mjs
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build portable executable
+        env:
+          ORCA_REUSE_PREPARED_NATIVE_RUNTIME: '1'
+        run: pnpm run build:win:portable
+
+      - name: Verify artifact and checksum
+        shell: pwsh
+        run: |
+          $artifact = 'dist/orca-windows-portable.exe'
+          if (-not (Test-Path $artifact)) {
+            throw "Missing portable artifact: $artifact"
+          }
+          $hash = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  orca-windows-portable.exe" | Set-Content "$artifact.sha256" -Encoding ascii
+
+      - name: Upload portable executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: orca-windows-portable-${{ github.run_id }}
+          path: |
+            dist/orca-windows-portable.exe
+            dist/orca-windows-portable.exe.sha256
+          retention-days: 30
+          if-no-files-found: error

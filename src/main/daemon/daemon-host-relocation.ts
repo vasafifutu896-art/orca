@@ -12,6 +12,7 @@ import {
 import { dirname, join, win32 as winPath } from 'node:path'
 import { app } from 'electron'
 import { parseDaemonPidFile, startTimeMatches } from './daemon-health'
+import { isPortableWindowsProcess } from '../startup/portable-profile'
 
 /**
  * Relocate the terminal daemon's process image out of the app install dir into LOCAL userData so it
@@ -200,6 +201,9 @@ function readMarker(dir: string): MaterializeMarker | null {
 }
 
 function hostRootDir(): string {
+  if (isPortableWindowsProcess()) {
+    return join(app.getPath('userData'), HOST_SUBDIR)
+  }
   // Prefer LOCAL appData (see LOCAL_HOST_ROOT_NAME); fall back to userData only if LOCALAPPDATA is unset.
   const localAppData = process.env.LOCALAPPDATA
   const base =

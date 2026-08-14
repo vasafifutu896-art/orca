@@ -241,6 +241,14 @@ describe('electron-builder config', () => {
     }
   })
 
+  it('uses a concurrency-safe single-file Windows portable target', () => {
+    expect(electronBuilderConfig.portable).toEqual({
+      artifactName: 'orca-windows-portable.${ext}',
+      requestExecutionLevel: 'user',
+      unpackDirName: false
+    })
+  })
+
   it('overrides packaged semver only for local macOS builds', () => {
     const configPath = require.resolve('../electron-builder.config.cjs')
     const original = process.env.ORCA_LOCAL_BUILD_VERSION
