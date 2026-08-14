@@ -1,44 +1,38 @@
 // @vitest-environment happy-dom
 
-import { fireEvent, render } from '@testing-library/react'
+import { DndContext } from '@dnd-kit/core'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { TERMINAL_MANAGER_SESSION_DRAG_TYPE } from './terminal-manager-drag-data'
-import { TerminalManagerGroupSection } from './TerminalManagerGroupSection'
+import { TerminalManagerGroupHeader } from './TerminalManagerGroupHeader'
 
-describe('TerminalManagerGroupSection', () => {
-  it('moves a dropped terminal session into the group', () => {
-    const onMoveSession = vi.fn()
-    const dataTransfer = {
-      dropEffect: 'none',
-      effectAllowed: 'move',
-      types: [TERMINAL_MANAGER_SESSION_DRAG_TYPE, 'text/plain'],
-      getData: (type: string) => (type === 'text/plain' ? 'terminal-1' : ''),
-      setData: vi.fn()
-    }
+describe('TerminalManagerGroupHeader', () => {
+  it('keeps the rename editor focused after the actions menu closes and commits the name', async () => {
     const group = { id: 'group-1', name: 'Implementation', collapsed: false }
-    const view = render(
-      <TerminalManagerGroupSection
-        group={group}
-        collapsed={false}
-        sessions={[]}
-        groups={[group]}
-        activeTerminalTabId={null}
-        groupIndex={0}
-        onToggle={vi.fn()}
-        onRename={vi.fn()}
-        onDelete={vi.fn()}
-        onMoveGroup={vi.fn()}
-        onMoveSession={onMoveSession}
-      />
+    const onRename = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <DndContext>
+        <TerminalManagerGroupHeader
+          group={group}
+          collapsed={false}
+          sessionCount={0}
+          groups={[group]}
+          groupIndex={0}
+          onToggle={vi.fn()}
+          onRename={onRename}
+          onDelete={vi.fn()}
+          onMoveGroup={vi.fn()}
+        />
+      </DndContext>
     )
-    const section = view.container.querySelector('[data-terminal-manager-group-id="group-1"]')
-    if (!section) {
-      throw new Error('Expected terminal manager group section')
-    }
 
-    fireEvent.dragOver(section, { dataTransfer })
-    fireEvent.drop(section, { dataTransfer })
+    await user.click(screen.getByRole('button', { name: 'Implementation group actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename group' }))
+    const input = await screen.findByRole('textbox', { name: 'Rename group Implementation' })
+    await user.clear(input)
+    await user.type(input, 'Core work{Enter}')
 
-    expect(onMoveSession).toHaveBeenCalledWith('terminal-1', 'group-1')
+    expect(onRename).toHaveBeenCalledWith('group-1', 'Core work')
   })
 })

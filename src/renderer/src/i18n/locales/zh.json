@@ -32,7 +32,10 @@
     "moveGroupUp": "上移分组",
     "moveGroupDown": "下移分组",
     "deleteGroup": "删除分组",
-    "dropHere": "将终端会话拖放到此处"
+    "dropHere": "将终端会话拖放到此处",
+    "selectedCount": "已选择 {{value0}} 个会话",
+    "clearSelection": "清除选择",
+    "selectSession": "选择会话 {{value0}}"
   },
   "githubChecks": {
     "retrying": "正在重试..."

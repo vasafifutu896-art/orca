@@ -32,7 +32,10 @@
     "moveGroupUp": "グループを上へ移動",
     "moveGroupDown": "グループを下へ移動",
     "deleteGroup": "グループを削除",
-    "dropHere": "ターミナルセッションをここにドロップ"
+    "dropHere": "ターミナルセッションをここにドロップ",
+    "selectedCount": "{{value0}} 個のセッションを選択中",
+    "clearSelection": "選択を解除",
+    "selectSession": "セッション {{value0}} を選択"
   },
   "githubChecks": {
     "retrying": "再試行中…"

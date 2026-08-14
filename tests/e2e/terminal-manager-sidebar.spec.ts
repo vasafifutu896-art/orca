@@ -9,6 +9,27 @@ type SeededSessions = {
   thirdTabId: string
 }
 
+async function dragWithPointer(
+  page: Page,
+  source: ReturnType<Page['locator']>,
+  target: ReturnType<Page['locator']>
+): Promise<void> {
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  if (!sourceBox || !targetBox) {
+    throw new Error('Terminal manager drag source or target is not visible')
+  }
+  const sourceX = sourceBox.x + sourceBox.width / 2
+  const sourceY = sourceBox.y + sourceBox.height / 2
+  const targetX = targetBox.x + targetBox.width / 2
+  const targetY = targetBox.y + targetBox.height / 2
+  await page.mouse.move(sourceX, sourceY)
+  await page.mouse.down()
+  await page.mouse.move(sourceX + 8, sourceY)
+  await page.mouse.move(targetX, targetY, { steps: 2 })
+  await page.mouse.up()
+}
+
 async function seedProjectTerminalSessions(page: Page): Promise<SeededSessions> {
   return page.evaluate(() => {
     const store = window.__store
@@ -125,12 +146,91 @@ test('manages project terminal groups in the right sidebar with live AI state', 
     .filter({ hasText: 'Implementation' })
     .first()
   await expect(implementationGroup).toBeVisible()
+  const implementationGroupId = await implementationGroup.getAttribute(
+    'data-terminal-manager-group-id'
+  )
+  if (!implementationGroupId) {
+    throw new Error('Created terminal manager group has no id')
+  }
+  const createdGroup = manager.locator(
+    `[data-terminal-manager-group-id="${implementationGroupId}"]`
+  )
+
+  await createdGroup.getByRole('button', { name: 'Implementation group actions' }).click()
+  await orcaPage.getByRole('menuitem', { name: 'Rename group' }).click()
+  const renameGroupInput = manager.getByRole('textbox', { name: 'Rename group Implementation' })
+  await expect(renameGroupInput).toBeVisible()
+  await renameGroupInput.fill('Core work')
+  await renameGroupInput.press('Enter')
+  await expect(createdGroup.getByText('Core work', { exact: true })).toBeVisible()
+
+  await manager.getByRole('button', { name: 'New group' }).click()
+  await manager.getByRole('textbox', { name: 'Group name' }).fill('Review')
+  await manager.getByRole('textbox', { name: 'Group name' }).press('Enter')
+  const reviewGroup = manager.locator('section').filter({ hasText: 'Review' }).first()
+  const reviewGroupId = await reviewGroup.getAttribute('data-terminal-manager-group-id')
+  if (!reviewGroupId) {
+    throw new Error('Second terminal manager group has no id')
+  }
+  const namedGroups = manager.locator(
+    '[data-terminal-manager-group-id]:not([data-terminal-manager-group-id="ungrouped"])'
+  )
+  await dragWithPointer(
+    orcaPage,
+    reviewGroup.getByRole('button', { name: 'Drag group Review' }),
+    createdGroup
+  )
+  await expect(namedGroups.first()).toHaveAttribute('data-terminal-manager-group-id', reviewGroupId)
+  await dragWithPointer(
+    orcaPage,
+    reviewGroup.getByRole('button', { name: 'Drag group Review' }),
+    manager.locator('[data-terminal-manager-group-end-drop="true"]')
+  )
+  await expect(namedGroups.nth(1)).toHaveAttribute('data-terminal-manager-group-id', reviewGroupId)
+
   const firstSession = manager.locator(`[data-terminal-manager-session-id="${seeded.firstTabId}"]`)
-  await firstSession.click({ button: 'right' })
-  await orcaPage.getByRole('menuitem', { name: 'Move to group' }).hover()
-  await orcaPage.getByRole('menuitem', { name: 'Implementation', exact: true }).click()
+  const secondSession = manager.locator(
+    `[data-terminal-manager-session-id="${seeded.secondTabId}"]`
+  )
+  await firstSession.getByRole('checkbox', { name: 'Select session Codex implementation' }).click()
+  await secondSession.getByRole('checkbox', { name: 'Select session Tests' }).click()
+  await expect(manager.locator('[data-terminal-manager-selection-count="2"]')).toBeVisible()
+  await dragWithPointer(
+    orcaPage,
+    firstSession.locator('[data-terminal-manager-session-drag-handle="true"]'),
+    createdGroup
+  )
   await expect(
-    implementationGroup.locator(`[data-terminal-manager-session-id="${seeded.firstTabId}"]`)
+    createdGroup.locator(`[data-terminal-manager-session-id="${seeded.firstTabId}"]`)
+  ).toBeVisible()
+  await expect(
+    createdGroup.locator(`[data-terminal-manager-session-id="${seeded.secondTabId}"]`)
+  ).toBeVisible()
+
+  await manager.getByRole('button', { name: 'Clear selection' }).click()
+  await createdGroup
+    .getByRole('button', { name: /^Core work/ })
+    .first()
+    .click()
+  await expect(createdGroup.getByRole('button', { name: /^Core work/ }).first()).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  )
+  const thirdBeforeMove = manager.locator(
+    `[data-terminal-manager-session-id="${seeded.thirdTabId}"]`
+  )
+  await thirdBeforeMove.getByRole('checkbox', { name: 'Select session Server logs' }).click()
+  await dragWithPointer(
+    orcaPage,
+    thirdBeforeMove.locator('[data-terminal-manager-session-drag-handle="true"]'),
+    createdGroup
+  )
+  await createdGroup
+    .getByRole('button', { name: /^Core work/ })
+    .first()
+    .click()
+  await expect(
+    createdGroup.locator(`[data-terminal-manager-session-id="${seeded.thirdTabId}"]`)
   ).toBeVisible()
 
   await orcaPage.evaluate(() => window.__store?.getState().setRightSidebarTab('explorer'))
@@ -139,8 +239,12 @@ test('manages project terminal groups in the right sidebar with live AI state', 
   const restoredManager = orcaPage.locator(
     `[data-terminal-manager-workspace="${seeded.worktreeId}"]`
   )
-  const restoredGroup = restoredManager.locator('section').filter({ hasText: 'Implementation' })
+  const restoredGroup = restoredManager.locator(
+    `[data-terminal-manager-group-id="${implementationGroupId}"]`
+  )
   await expect(restoredGroup.getByText('Codex implementation', { exact: true })).toBeVisible()
+  await expect(restoredGroup.getByText('Tests', { exact: true })).toBeVisible()
+  await expect(restoredGroup.getByText('Server logs', { exact: true })).toBeVisible()
 
   const thirdSession = restoredManager.locator(
     `[data-terminal-manager-session-id="${seeded.thirdTabId}"]`

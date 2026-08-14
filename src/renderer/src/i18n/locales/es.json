@@ -32,7 +32,10 @@
     "moveGroupUp": "Mover grupo arriba",
     "moveGroupDown": "Mover grupo abajo",
     "deleteGroup": "Eliminar grupo",
-    "dropHere": "Suelte aquí las sesiones de terminal"
+    "dropHere": "Suelte aquí las sesiones de terminal",
+    "selectedCount": "{{value0}} sesiones seleccionadas",
+    "clearSelection": "Borrar selección",
+    "selectSession": "Seleccionar sesión {{value0}}"
   },
   "githubChecks": {
     "retrying": "Reintentando…"

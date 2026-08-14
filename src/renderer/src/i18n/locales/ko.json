@@ -32,7 +32,10 @@
     "moveGroupUp": "그룹 위로 이동",
     "moveGroupDown": "그룹 아래로 이동",
     "deleteGroup": "그룹 삭제",
-    "dropHere": "터미널 세션을 여기에 놓으세요"
+    "dropHere": "터미널 세션을 여기에 놓으세요",
+    "selectedCount": "터미널 세션 {{value0}}개 선택됨",
+    "clearSelection": "선택 해제",
+    "selectSession": "{{value0}} 세션 선택"
   },
   "githubChecks": {
     "retrying": "재시도 중…"

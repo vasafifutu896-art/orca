@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
-import { Check, FolderInput, GripVertical, Pencil, Pin, PinOff, X } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { GripVertical, Pin } from 'lucide-react'
 import { stripLeadingAgentTitleDecoration } from '../../../../../shared/agent-title-decoration'
 import { resolveTerminalTabTitle } from '../../../../../shared/tab-title-resolution'
 import { translate } from '@/i18n/i18n'
@@ -8,16 +9,7 @@ import { useTabAgent } from '@/lib/use-tab-agent'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger
-} from '@/components/ui/context-menu'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { TerminalTabLeadingIcon } from '../../tab-bar/TerminalTabLeadingIcon'
 import {
@@ -28,23 +20,38 @@ import {
 import { closeTerminalTab } from '../../terminal/terminal-tab-actions'
 import { activateWorktreeTerminalSession } from '../../sidebar/worktree-terminal-session-activation'
 import type { WorktreeTerminalSession } from '../../sidebar/worktree-terminal-session-order'
-import type { TerminalManagerGroup } from './terminal-manager-layout'
 import {
-  hasTerminalManagerSessionDrag,
-  readTerminalManagerSessionDrag,
-  writeTerminalManagerSessionDrag
-} from './terminal-manager-drag-data'
+  terminalManagerSessionDragId,
+  terminalManagerSessionDropId,
+  type TerminalManagerDragData,
+  type TerminalManagerDropData
+} from './terminal-manager-dnd'
+import type { TerminalManagerGroup } from './terminal-manager-layout'
+import type { TerminalManagerSelectionGesture } from './terminal-manager-selection'
+import { TerminalManagerSessionCloseButton } from './TerminalManagerSessionCloseButton'
+import { TerminalManagerSessionContextMenu } from './TerminalManagerSessionContextMenu'
 
 type Props = {
-  session: WorktreeTerminalSession
-  isActive: boolean
   groupId: string | null
   groups: readonly TerminalManagerGroup[]
+  isActive: boolean
+  isSelected: boolean
   onMove: (sessionId: string, groupId: string | null, beforeSessionId?: string) => void
+  onSelect: (sessionId: string, gesture: TerminalManagerSelectionGesture) => void
+  onToggleSelection: (sessionId: string) => void
+  session: WorktreeTerminalSession
 }
 
-export function TerminalManagerSessionRow(props: Props): React.JSX.Element {
-  const { session, isActive, groupId, groups, onMove } = props
+export function TerminalManagerSessionRow({
+  groupId,
+  groups,
+  isActive,
+  isSelected,
+  onMove,
+  onSelect,
+  onToggleSelection,
+  session
+}: Props): React.JSX.Element {
   const { tab, unifiedTab } = session
   const generatedTitlesEnabled = useAppStore(
     (state) => state.settings?.tabAutoGenerateTitle === true
@@ -76,12 +83,31 @@ export function TerminalManagerSessionRow(props: Props): React.JSX.Element {
     tab.customTitle ?? (tabAgent ? stripLeadingAgentTitleDecoration(resolvedTitle) : resolvedTitle)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(displayTitle)
-  const [isDropTarget, setIsDropTarget] = useState(false)
   const renameResolvedRef = useRef(false)
-  const wasDraggedRef = useRef(false)
+  const renameFocusFrameRef = useRef<number | null>(null)
   const isPinned = Boolean(tab.isPinned || unifiedTab?.isPinned)
   const showUnreadActivity =
     hasUnreadActivity && !isRenaming && !isTerminalTabActivityLive(activityStatus)
+  const dragData: TerminalManagerDragData = {
+    kind: 'terminal-manager-session',
+    sessionId: tab.id
+  }
+  const dropData: TerminalManagerDropData = {
+    kind: 'terminal-manager-session-target',
+    groupId,
+    beforeSessionId: tab.id
+  }
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef: setDragNodeRef
+  } = useDraggable({ id: terminalManagerSessionDragId(tab.id), data: dragData })
+  const { isOver, setNodeRef: setDropNodeRef } = useDroppable({
+    id: terminalManagerSessionDropId(tab.id),
+    data: dropData
+  })
 
   const beginRename = (): void => {
     renameResolvedRef.current = false
@@ -101,6 +127,20 @@ export function TerminalManagerSessionRow(props: Props): React.JSX.Element {
     renameResolvedRef.current = true
     setIsRenaming(false)
   }
+  const setRenameInputElement = useCallback((input: HTMLInputElement | null) => {
+    if (renameFocusFrameRef.current !== null) {
+      cancelAnimationFrame(renameFocusFrameRef.current)
+      renameFocusFrameRef.current = null
+    }
+    if (!input) {
+      return
+    }
+    renameFocusFrameRef.current = requestAnimationFrame(() => {
+      renameFocusFrameRef.current = null
+      input.focus()
+      input.select()
+    })
+  }, [])
   const togglePin = (): void => {
     if (!unifiedTab) {
       return
@@ -120,66 +160,55 @@ export function TerminalManagerSessionRow(props: Props): React.JSX.Element {
 
   const row = (
     <div
+      ref={(node) => {
+        setDragNodeRef(node)
+        setDropNodeRef(node)
+      }}
       className={cn(
         'group/session flex min-w-0 items-center rounded-md border border-transparent text-foreground transition-colors',
         isActive ? 'bg-accent' : 'hover:bg-accent/60',
-        isDropTarget && 'border-ring/50 bg-accent/70'
+        isSelected && 'border-ring/30 bg-accent/55',
+        isOver && 'border-ring/60 bg-accent/75',
+        isDragging && 'opacity-60'
       )}
       data-terminal-manager-session-id={tab.id}
+      data-terminal-manager-session-selected={isSelected ? 'true' : 'false'}
       data-current={isActive ? 'true' : undefined}
       data-agent-activity-status={activityStatus}
-      onDragEnd={() => {
-        setIsDropTarget(false)
-        window.setTimeout(() => {
-          wasDraggedRef.current = false
-        }, 0)
-      }}
-      onDragOver={(event) => {
-        if (!hasTerminalManagerSessionDrag(event.dataTransfer)) {
-          return
-        }
-        event.preventDefault()
-        event.dataTransfer.dropEffect = 'move'
-        setIsDropTarget(true)
-      }}
-      onDragLeave={() => setIsDropTarget(false)}
-      onDrop={(event) => {
-        const sessionId = readTerminalManagerSessionDrag(event.dataTransfer)
-        if (!sessionId) {
-          return
-        }
-        event.preventDefault()
-        event.stopPropagation()
-        setIsDropTarget(false)
-        if (sessionId !== tab.id) {
-          onMove(sessionId, groupId, tab.id)
-        }
-      }}
     >
-      <span
-        className="ml-0.5 flex size-5 shrink-0 cursor-grab items-center justify-center text-muted-foreground/45 active:cursor-grabbing"
+      <Checkbox
+        checked={isSelected}
+        className="ml-1 size-3.5 opacity-0 group-hover/session:opacity-100 data-[state=checked]:opacity-100 focus-visible:opacity-100"
+        data-terminal-manager-session-select={tab.id}
+        aria-label={translate('terminalManager.selectSession', 'Select session {{value0}}', {
+          value0: displayTitle
+        })}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        onCheckedChange={() => onToggleSelection(tab.id)}
+      />
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        className="flex size-5 shrink-0 touch-none cursor-grab items-center justify-center text-muted-foreground/45 outline-none active:cursor-grabbing focus-visible:text-foreground"
         data-terminal-manager-session-drag-handle="true"
-        draggable={!isRenaming}
         aria-label={translate('terminalManager.dragSession', 'Drag session {{value0}}', {
           value0: displayTitle
         })}
-        onDragStart={(event) => {
-          wasDraggedRef.current = true
-          writeTerminalManagerSessionDrag(event.dataTransfer, tab.id)
-        }}
+        {...attributes}
+        {...listeners}
       >
         <GripVertical className="size-3.5" aria-hidden="true" />
-      </span>
+      </button>
       {isRenaming ? (
         <Input
-          autoFocus
+          ref={setRenameInputElement}
           value={renameValue}
           aria-label={translate('terminalManager.renameSessionInput', 'Rename session {{value0}}', {
             value0: displayTitle
           })}
           className="mx-1 h-7 min-w-0 flex-1 px-2 py-0 text-xs"
           spellCheck={false}
-          onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => setRenameValue(event.target.value)}
           onBlur={commitRename}
           onKeyDown={(event) => {
@@ -203,8 +232,11 @@ export function TerminalManagerSessionRow(props: Props): React.JSX.Element {
           className="h-8 min-w-0 flex-1 justify-start gap-0 rounded-md px-1.5 text-xs font-normal hover:bg-transparent"
           aria-current={isActive ? 'page' : undefined}
           aria-label={displayTitle}
-          onClick={() => {
-            if (!wasDraggedRef.current) {
+          onClick={(event) => {
+            const additive = event.ctrlKey || event.metaKey
+            const range = event.shiftKey
+            onSelect(tab.id, { additive, range })
+            if (!additive && !range) {
               activateWorktreeTerminalSession(tab.worktreeId, tab.id)
             }
           }}
@@ -239,60 +271,23 @@ export function TerminalManagerSessionRow(props: Props): React.JSX.Element {
         </Button>
       )}
       {!isRenaming && !isPinned ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className="mr-0.5 size-6 shrink-0 opacity-0 hover:bg-accent group-hover/session:opacity-100 focus-visible:opacity-100"
-          aria-label={translate('terminalManager.close', 'Close {{value0}}', {
-            value0: displayTitle
-          })}
-          onClick={closeSession}
-        >
-          <X className="size-3.5" />
-        </Button>
+        <TerminalManagerSessionCloseButton displayTitle={displayTitle} onClose={closeSession} />
       ) : null}
     </div>
   )
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onSelect={beginRename}>
-          <Pencil />
-          {translate('terminalManager.renameSession', 'Rename session')}
-        </ContextMenuItem>
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <FolderInput />
-            {translate('terminalManager.moveToGroup', 'Move to group')}
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent>
-            <ContextMenuItem onSelect={() => onMove(tab.id, null)}>
-              {groupId === null ? <Check /> : <span className="size-3.5" />}
-              {translate('terminalManager.ungrouped', 'Ungrouped')}
-            </ContextMenuItem>
-            {groups.map((group) => (
-              <ContextMenuItem key={group.id} onSelect={() => onMove(tab.id, group.id)}>
-                {groupId === group.id ? <Check /> : <span className="size-3.5" />}
-                {group.name}
-              </ContextMenuItem>
-            ))}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuItem onSelect={togglePin} disabled={!unifiedTab}>
-          {isPinned ? <PinOff /> : <Pin />}
-          {isPinned
-            ? translate('terminalManager.unpin', 'Unpin session')
-            : translate('terminalManager.pin', 'Pin session')}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={closeSession} disabled={isPinned} variant="destructive">
-          <X />
-          {translate('terminalManager.closeSession', 'Close session')}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+    <TerminalManagerSessionContextMenu
+      groupId={groupId}
+      groups={groups}
+      isPinned={isPinned}
+      pinDisabled={!unifiedTab}
+      onRename={beginRename}
+      onMove={(targetGroupId) => onMove(tab.id, targetGroupId)}
+      onTogglePin={togglePin}
+      onClose={closeSession}
+    >
+      {row}
+    </TerminalManagerSessionContextMenu>
   )
 }

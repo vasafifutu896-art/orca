@@ -1,13 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
-import { BellOff, BellRing, FolderPlus, Loader2, Plus } from 'lucide-react'
+import { useMemo } from 'react'
+import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { TerminalTab } from '../../../../../shared/terminal-tab-types'
 import { translate } from '@/i18n/i18n'
 import { createBrowserUuid } from '@/lib/browser-uuid'
-import { isImeCompositionKeyDown } from '@/lib/ime-composition-keyboard-event'
 import { useAppStore } from '@/store'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { createWorktreeTerminalSession } from '../../sidebar/worktree-terminal-session-activation'
 import {
   orderWorktreeTerminalSessions,
@@ -17,17 +13,18 @@ import {
   addTerminalManagerGroup,
   deleteTerminalManagerGroup,
   moveTerminalManagerGroup,
-  moveTerminalManagerSession,
+  moveTerminalManagerSessions,
   renameTerminalManagerGroup,
   sessionsForTerminalManagerGroup,
   toggleTerminalManagerGroup
 } from './terminal-manager-layout'
-import {
-  hasTerminalManagerGroupDrag,
-  readTerminalManagerGroupDrag
-} from './terminal-manager-drag-data'
+import { TerminalManagerGroupEndDropTarget } from './TerminalManagerGroupEndDropTarget'
 import { TerminalManagerGroupSection } from './TerminalManagerGroupSection'
+import { TerminalManagerSelectionBar } from './TerminalManagerSelectionBar'
+import { TerminalManagerWorkspaceHeader } from './TerminalManagerWorkspaceHeader'
+import { useTerminalManagerDnd } from './use-terminal-manager-dnd'
 import { useTerminalManagerLayout } from './use-terminal-manager-layout'
+import { useTerminalManagerSelection } from './use-terminal-manager-selection'
 
 const EMPTY_TERMINAL_TABS: readonly TerminalTab[] = []
 const EMPTY_UNIFIED_TABS = [] as const
@@ -66,10 +63,14 @@ export function TerminalManagerWorkspace({
     [sessions]
   )
   const [layout, setLayout] = useTerminalManagerLayout(worktreeId, sessionIds)
-  const [isCreatingSession, setIsCreatingSession] = useState(false)
-  const [isAddingGroup, setIsAddingGroup] = useState(false)
-  const [newGroupName, setNewGroupName] = useState('')
-  const newGroupResolvedRef = useRef(false)
+  const visualSessionIds = useMemo(
+    () => [
+      ...layout.groups.flatMap((group) => sessionsForTerminalManagerGroup(layout, group.id)),
+      ...sessionsForTerminalManagerGroup(layout, null)
+    ],
+    [layout]
+  )
+  const selection = useTerminalManagerSelection(visualSessionIds)
   const projectName = worktree?.displayName || worktree?.branch || worktreeId
 
   const resolveSessions = (ids: readonly string[]): WorktreeTerminalSession[] =>
@@ -77,49 +78,28 @@ export function TerminalManagerWorkspace({
       const session = sessionById.get(id)
       return session ? [session] : []
     })
-  const createSession = async (): Promise<void> => {
-    if (isCreatingSession) {
-      return
-    }
-    setIsCreatingSession(true)
-    try {
-      await createWorktreeTerminalSession(worktreeId)
-    } finally {
-      setIsCreatingSession(false)
-    }
-  }
-  const beginAddGroup = (): void => {
-    newGroupResolvedRef.current = false
-    setNewGroupName('')
-    setIsAddingGroup(true)
-  }
-  const commitAddGroup = (): void => {
-    if (newGroupResolvedRef.current) {
-      return
-    }
-    newGroupResolvedRef.current = true
-    const name = newGroupName.trim()
-    if (name) {
-      setLayout((current) =>
-        addTerminalManagerGroup(current, {
-          id: `group-${createBrowserUuid()}`,
-          name
-        })
-      )
-    }
-    setIsAddingGroup(false)
-  }
-  const cancelAddGroup = (): void => {
-    newGroupResolvedRef.current = true
-    setIsAddingGroup(false)
+  const moveSessions = (
+    ids: readonly string[],
+    groupId: string | null,
+    beforeSessionId?: string
+  ): void => {
+    setLayout((current) => moveTerminalManagerSessions(current, ids, groupId, beforeSessionId))
   }
   const moveSession = (
     sessionId: string,
     groupId: string | null,
     beforeSessionId?: string
   ): void => {
-    setLayout((current) => moveTerminalManagerSession(current, sessionId, groupId, beforeSessionId))
+    moveSessions(selection.prepareBatchAction(sessionId), groupId, beforeSessionId)
   }
+  const moveGroup = (groupId: string, beforeGroupId?: string | null): void => {
+    setLayout((current) => moveTerminalManagerGroup(current, groupId, beforeGroupId))
+  }
+  const dnd = useTerminalManagerDnd({
+    moveGroup,
+    moveSessions,
+    prepareSessionDrag: selection.prepareBatchAction
+  })
   const toggleCompletionNotifications = (): void => {
     const state = useAppStore.getState()
     const notifications = state.settings?.notifications
@@ -134,157 +114,113 @@ export function TerminalManagerWorkspace({
       }
     })
   }
+  const overlayLabel = (() => {
+    const activeDrag = dnd.activeDrag
+    if (!activeDrag) {
+      return ''
+    }
+    if (activeDrag.kind === 'group') {
+      return layout.groups.find((group) => group.id === activeDrag.groupId)?.name ?? ''
+    }
+    if (activeDrag.sessionIds.length > 1) {
+      return translate('terminalManager.selectedCount', '{{value0}} sessions selected', {
+        value0: activeDrag.sessionIds.length
+      })
+    }
+    const draggedSession = sessionById.get(activeDrag.sessionIds[0] ?? '')
+    return draggedSession?.tab.customTitle ?? draggedSession?.tab.title ?? 'Terminal'
+  })()
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-terminal-manager-workspace={worktreeId}>
-      <div className="border-b border-border px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-xs font-semibold text-foreground">
-              {translate('terminalManager.title', 'Terminal manager')}
-            </h2>
-            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{projectName}</p>
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={translate('terminalManager.newGroup', 'New group')}
-                onClick={beginAddGroup}
-              >
-                <FolderPlus className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {translate('terminalManager.newGroup', 'New group')}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={translate('terminalManager.newSession', 'New terminal session')}
-                disabled={isCreatingSession}
-                onClick={() => void createSession()}
-              >
-                {isCreatingSession ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Plus className="size-3.5" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {translate('terminalManager.newSession', 'New terminal session')}
-            </TooltipContent>
-          </Tooltip>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          className="mt-1.5 h-6 justify-start px-1.5 text-[10px] font-normal text-muted-foreground"
-          aria-pressed={completionNotificationsEnabled}
-          onClick={toggleCompletionNotifications}
-        >
-          {completionNotificationsEnabled ? (
-            <BellRing className="size-3" />
-          ) : (
-            <BellOff className="size-3" />
-          )}
-          {completionNotificationsEnabled
-            ? translate('terminalManager.completionNotificationsOn', 'AI completion alerts on')
-            : translate('terminalManager.completionNotificationsOff', 'AI completion alerts off')}
-        </Button>
-        {isAddingGroup ? (
-          <Input
-            autoFocus
-            value={newGroupName}
-            aria-label={translate('terminalManager.groupName', 'Group name')}
-            placeholder={translate('terminalManager.groupNamePlaceholder', 'e.g. Implementation')}
-            className="mt-2 h-7 px-2 py-0 text-xs"
-            maxLength={80}
-            spellCheck={false}
-            onChange={(event) => setNewGroupName(event.target.value)}
-            onBlur={commitAddGroup}
-            onKeyDown={(event) => {
-              if (isImeCompositionKeyDown(event)) {
-                return
+    <DndContext
+      sensors={dnd.sensors}
+      collisionDetection={dnd.collisionDetection}
+      onDragStart={dnd.onDragStart}
+      onDragEnd={dnd.onDragEnd}
+      onDragCancel={dnd.onDragCancel}
+    >
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        data-terminal-manager-workspace={worktreeId}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !dnd.activeDrag) {
+            selection.clear()
+          }
+        }}
+      >
+        <TerminalManagerWorkspaceHeader
+          projectName={projectName}
+          completionNotificationsEnabled={completionNotificationsEnabled}
+          onAddGroup={(name) =>
+            setLayout((current) =>
+              addTerminalManagerGroup(current, {
+                id: `group-${createBrowserUuid()}`,
+                name
+              })
+            )
+          }
+          onCreateSession={() => createWorktreeTerminalSession(worktreeId)}
+          onToggleCompletionNotifications={toggleCompletionNotifications}
+        />
+        <TerminalManagerSelectionBar
+          count={selection.selectedIds.length}
+          onClear={selection.clear}
+        />
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-2 scrollbar-sleek">
+          {layout.groups.map((group, index) => (
+            <TerminalManagerGroupSection
+              key={group.id}
+              group={group}
+              collapsed={group.collapsed}
+              sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, group.id))}
+              groups={layout.groups}
+              activeTerminalTabId={activeTerminalTabId}
+              groupIndex={index}
+              isSessionSelected={selection.isSelected}
+              onSelectSession={selection.select}
+              onToggleSessionSelection={selection.toggle}
+              onToggle={(groupId) =>
+                setLayout((current) => toggleTerminalManagerGroup(current, groupId))
               }
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                commitAddGroup()
-              } else if (event.key === 'Escape') {
-                event.preventDefault()
-                cancelAddGroup()
+              onRename={(groupId, name) =>
+                setLayout((current) => renameTerminalManagerGroup(current, groupId, name))
               }
-            }}
-          />
-        ) : null}
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-2 scrollbar-sleek">
-        {layout.groups.map((group, index) => (
+              onDelete={(groupId) =>
+                setLayout((current) => deleteTerminalManagerGroup(current, groupId))
+              }
+              onMoveGroup={moveGroup}
+              onMoveSession={moveSession}
+            />
+          ))}
+          <TerminalManagerGroupEndDropTarget />
           <TerminalManagerGroupSection
-            key={group.id}
-            group={group}
-            collapsed={group.collapsed}
-            sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, group.id))}
+            group={null}
+            collapsed={layout.ungroupedCollapsed}
+            sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, null))}
             groups={layout.groups}
             activeTerminalTabId={activeTerminalTabId}
-            groupIndex={index}
-            onToggle={(groupId) =>
-              setLayout((current) => toggleTerminalManagerGroup(current, groupId))
-            }
-            onRename={(groupId, name) =>
-              setLayout((current) => renameTerminalManagerGroup(current, groupId, name))
-            }
-            onDelete={(groupId) =>
-              setLayout((current) => deleteTerminalManagerGroup(current, groupId))
-            }
-            onMoveGroup={(groupId, beforeGroupId) =>
-              setLayout((current) => moveTerminalManagerGroup(current, groupId, beforeGroupId))
-            }
+            groupIndex={layout.groups.length}
+            isSessionSelected={selection.isSelected}
+            onSelectSession={selection.select}
+            onToggleSessionSelection={selection.toggle}
+            onToggle={() => setLayout((current) => toggleTerminalManagerGroup(current, null))}
+            onRename={() => undefined}
+            onDelete={() => undefined}
+            onMoveGroup={() => undefined}
             onMoveSession={moveSession}
           />
-        ))}
-        <div
-          className="h-2 rounded transition-colors"
-          data-terminal-manager-group-end-drop="true"
-          onDragOver={(event) => {
-            if (!hasTerminalManagerGroupDrag(event.dataTransfer)) {
-              return
-            }
-            event.preventDefault()
-            event.dataTransfer.dropEffect = 'move'
-          }}
-          onDrop={(event) => {
-            const groupId = readTerminalManagerGroupDrag(event.dataTransfer)
-            if (!groupId) {
-              return
-            }
-            event.preventDefault()
-            setLayout((current) => moveTerminalManagerGroup(current, groupId, null))
-          }}
-        />
-        <TerminalManagerGroupSection
-          group={null}
-          collapsed={layout.ungroupedCollapsed}
-          sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, null))}
-          groups={layout.groups}
-          activeTerminalTabId={activeTerminalTabId}
-          groupIndex={layout.groups.length}
-          onToggle={() => setLayout((current) => toggleTerminalManagerGroup(current, null))}
-          onRename={() => undefined}
-          onDelete={() => undefined}
-          onMoveGroup={() => undefined}
-          onMoveSession={moveSession}
-        />
+        </div>
       </div>
-    </div>
+      <DragOverlay dropAnimation={null}>
+        {overlayLabel ? (
+          <div
+            className="max-w-52 truncate rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md"
+            data-terminal-manager-drag-overlay="true"
+          >
+            {overlayLabel}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   )
 }

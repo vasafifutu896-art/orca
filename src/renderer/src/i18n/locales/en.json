@@ -32,7 +32,10 @@
     "moveGroupUp": "Move group up",
     "moveGroupDown": "Move group down",
     "deleteGroup": "Delete group",
-    "dropHere": "Drop terminal sessions here"
+    "dropHere": "Drop terminal sessions here",
+    "selectedCount": "{{value0}} sessions selected",
+    "clearSelection": "Clear selection",
+    "selectSession": "Select session {{value0}}"
   },
   "browser": {
     "loadFailure": {

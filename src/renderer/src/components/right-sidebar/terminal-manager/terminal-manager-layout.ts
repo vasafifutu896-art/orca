@@ -191,20 +191,37 @@ export function moveTerminalManagerSession(
   targetGroupId: string | null,
   beforeSessionId?: string | null
 ): TerminalManagerLayout {
-  if (!layout.sessionOrder.includes(sessionId)) {
+  return moveTerminalManagerSessions(layout, [sessionId], targetGroupId, beforeSessionId)
+}
+
+export function moveTerminalManagerSessions(
+  layout: TerminalManagerLayout,
+  sessionIds: readonly string[],
+  targetGroupId: string | null,
+  beforeSessionId?: string | null
+): TerminalManagerLayout {
+  const validSessionIds = new Set(layout.sessionOrder)
+  const movingIds = uniqueNonEmptyStrings(sessionIds).filter((id) => validSessionIds.has(id))
+  if (movingIds.length === 0) {
     return layout
   }
   if (targetGroupId && !layout.groups.some((group) => group.id === targetGroupId)) {
     return layout
   }
-  const sessionOrder = layout.sessionOrder.filter((id) => id !== sessionId)
+  const movingIdSet = new Set(movingIds)
+  if (beforeSessionId && movingIdSet.has(beforeSessionId)) {
+    return layout
+  }
+  const sessionOrder = layout.sessionOrder.filter((id) => !movingIdSet.has(id))
   const beforeIndex = beforeSessionId ? sessionOrder.indexOf(beforeSessionId) : -1
-  sessionOrder.splice(beforeIndex >= 0 ? beforeIndex : sessionOrder.length, 0, sessionId)
+  sessionOrder.splice(beforeIndex >= 0 ? beforeIndex : sessionOrder.length, 0, ...movingIds)
   const sessionGroupById = { ...layout.sessionGroupById }
-  if (targetGroupId) {
-    sessionGroupById[sessionId] = targetGroupId
-  } else {
-    delete sessionGroupById[sessionId]
+  for (const sessionId of movingIds) {
+    if (targetGroupId) {
+      sessionGroupById[sessionId] = targetGroupId
+    } else {
+      delete sessionGroupById[sessionId]
+    }
   }
   return { ...layout, sessionOrder, sessionGroupById }
 }

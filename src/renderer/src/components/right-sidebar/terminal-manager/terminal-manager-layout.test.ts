@@ -5,6 +5,7 @@ import {
   deleteTerminalManagerGroup,
   moveTerminalManagerGroup,
   moveTerminalManagerSession,
+  moveTerminalManagerSessions,
   normalizeTerminalManagerLayout,
   renameTerminalManagerGroup,
   sessionsForTerminalManagerGroup,
@@ -73,6 +74,18 @@ describe('terminal manager layout', () => {
     layout = moveTerminalManagerSession(layout, 'two', null)
     expect(sessionsForTerminalManagerGroup(layout, 'build')).toEqual(['three', 'one'])
     expect(sessionsForTerminalManagerGroup(layout, null)).toEqual(['two'])
+  })
+
+  it('moves multiple selected sessions together without reversing them', () => {
+    let layout = createEmptyTerminalManagerLayout(['one', 'two', 'three', 'four'])
+    layout = addTerminalManagerGroup(layout, { id: 'build', name: 'Build' })
+    layout = moveTerminalManagerSessions(layout, ['one', 'three'], 'build')
+
+    expect(sessionsForTerminalManagerGroup(layout, 'build')).toEqual(['one', 'three'])
+    expect(sessionsForTerminalManagerGroup(layout, null)).toEqual(['two', 'four'])
+
+    const unchanged = moveTerminalManagerSessions(layout, ['one', 'three'], 'build', 'three')
+    expect(unchanged).toBe(layout)
   })
 
   it('ignores unknown session and group targets', () => {
