@@ -20,3 +20,34 @@ export function shouldResetFileExplorerForVisibleWorktree(
 ): visibleWorktreePath is string {
   return visibleWorktreePath !== null && lastResetWorktreePath !== visibleWorktreePath
 }
+
+export function getFileExplorerResetIdentity({
+  worktreeId,
+  visibleRootPath,
+  connectionId,
+  connectionGeneration
+}: {
+  worktreeId: string | null
+  visibleRootPath: string | null
+  connectionId: string | null
+  connectionGeneration?: number
+}): string | null {
+  if (!worktreeId || !visibleRootPath) {
+    return null
+  }
+  // Why: two SSH workspaces commonly have the same Home path (for example
+  // /root). A path-only reset key can then leak server A's cached listing and
+  // operation owner into server B, making the first upload fail its owner guard.
+  return [worktreeId, visibleRootPath, connectionId ?? 'local', connectionGeneration ?? ''].join(
+    '\u0000'
+  )
+}
+
+export function getFileExplorerVisibleExpandedDirs(
+  expanded: Set<string>,
+  flatRemoteBrowser: boolean
+): Set<string> {
+  // Why: the Moba-style remote view shows one directory at a time. Reusing
+  // tree expansion state would make refresh/watch fan out hidden SSH reads.
+  return flatRemoteBrowser ? new Set<string>() : expanded
+}

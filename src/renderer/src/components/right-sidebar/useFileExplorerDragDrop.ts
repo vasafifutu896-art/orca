@@ -25,7 +25,10 @@ function extractIpcErrorMessage(err: unknown, fallback: string): string {
 }
 
 type UseFileExplorerDragDropParams = {
+  /** Stable workspace root used by runtime/editor mutation routing. */
   worktreePath: string | null
+  /** Directory represented by the blank root drop surface. */
+  rootDropDir?: string | null
   activeWorktreeId: string | null
   expanded: Set<string>
   toggleDir: (worktreeId: string, dirPath: string) => void
@@ -98,6 +101,7 @@ export function getDragEdgeScrollTarget({
 
 export function useFileExplorerDragDrop({
   worktreePath,
+  rootDropDir = worktreePath,
   activeWorktreeId,
   expanded,
   toggleDir,
@@ -342,18 +346,18 @@ export function useFileExplorerDragDrop({
         // not the React drop handler. We only clear native drag visual state
         // here; the actual import is triggered from onFileDrop.
         clearNativeDragState()
-        if (worktreePath) {
+        if (rootDropDir) {
           const dragPaths = readWorkspaceFileDragPaths(e.dataTransfer)
           if (dragPaths.status === 'rejected') {
             toast.error(getWorkspaceFileDragRejectionMessage(dragPaths.reason))
             return
           }
           for (const sourcePath of dragPaths.paths) {
-            handleMoveDrop(sourcePath, worktreePath)
+            handleMoveDrop(sourcePath, rootDropDir)
           }
         }
       },
-      [worktreePath, handleMoveDrop, stopDragEdgeScroll, clearNativeDragState]
+      [rootDropDir, handleMoveDrop, stopDragEdgeScroll, clearNativeDragState]
     )
   }
 

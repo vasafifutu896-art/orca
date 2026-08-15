@@ -62,9 +62,26 @@ jobs:
           src/main/ipc/notification-window-activation.test.ts
           src/main/ipc/notifications.test.ts
           src/main/ipc/register-core-handlers.test.ts
+          src/main/ipc/shell.test.ts
+          src/main/window/attach-main-window-services.test.ts
+          src/main/ipc/filesystem-import-ssh.test.ts
+          src/main/ipc/filesystem-import-ssh-ops.test.ts
+          src/main/ipc/filesystem-import-ssh-path-safety.test.ts
+          src/shared/native-file-drop.test.ts
           src/main/daemon/daemon-host-relocation.test.ts
           src/renderer/src/hooks/useIpcEvents.test.ts
           src/renderer/src/hooks/use-notification-activation-ready.test.ts
+          src/renderer/src/components/right-sidebar/RemoteFileToolbar.test.tsx
+          src/renderer/src/components/right-sidebar/FileExplorer.test.tsx
+          src/renderer/src/components/right-sidebar/file-explorer-directory-listing.test.ts
+          src/renderer/src/components/right-sidebar/file-explorer-reset.test.ts
+          src/renderer/src/components/right-sidebar/file-explorer-operation-generation.test.ts
+          src/renderer/src/components/right-sidebar/useFileExplorerDragDrop.test.ts
+          src/renderer/src/components/right-sidebar/useFileExplorerImport.test.tsx
+          src/renderer/src/components/right-sidebar/useFileExplorerKeys.test.ts
+          src/renderer/src/components/right-sidebar/useRemoteFileBrowser.test.tsx
+          src/renderer/src/components/right-sidebar/useFileExplorerTree.stale-dirs.test.tsx
+          src/renderer/src/components/right-sidebar/useFileExplorerVisibleRowProjection.test.ts
           config/scripts/build-windows-foreground-permission.test.mjs
           config/scripts/electron-builder-native-rebuild.test.mjs
           config/scripts/electron-builder-config.test.mjs

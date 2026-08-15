@@ -402,6 +402,9 @@ function resolveNativeFileDrop(event: DragEvent): NativeDropResolution | null {
       pathEntries.push({
         nativeFileDropTarget: entry.dataset.nativeFileDropTarget,
         nativeFileDropDir: entry.dataset.nativeFileDropDir,
+        nativeFileDropWorkspaceId: entry.dataset.nativeFileDropWorkspaceId,
+        nativeFileDropWorkspaceRootPath: entry.dataset.nativeFileDropWorkspaceRootPath,
+        nativeFileDropOwnerSnapshot: entry.dataset.nativeFileDropOwnerSnapshot,
         terminalTabId: entry.dataset.terminalTabId,
         terminalPaneLeafId: entry.dataset.terminalPaneLeafId ?? entry.dataset.leafId
       })
@@ -2511,6 +2514,8 @@ const api = {
     pathExists: (path: string): Promise<boolean> => ipcRenderer.invoke('shell:pathExists', path),
 
     pickAttachment: (): Promise<string | null> => ipcRenderer.invoke('shell:pickAttachment'),
+
+    pickFiles: (): Promise<string[]> => ipcRenderer.invoke('shell:pickFiles'),
 
     pickImage: (): Promise<string | null> => ipcRenderer.invoke('shell:pickImage'),
 

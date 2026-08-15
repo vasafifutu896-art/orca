@@ -15,6 +15,7 @@ type OperationRouteState = Parameters<typeof resolveWorktreeOperationRoute>[0]
 
 export type WorktreeOperationGenerationGuard = {
   assertCurrent: () => WorktreeOperationRoute
+  snapshot: WorktreeOperationGenerationSnapshot
 }
 
 export type WorktreeOperationGenerationSnapshot = {
@@ -96,6 +97,7 @@ export function captureWorktreeOperationGenerationGuard(
   const snapshot = captureWorktreeOperationGenerationSnapshot(expectedRoute)
 
   return {
+    snapshot,
     assertCurrent: () =>
       assertWorktreeOperationGenerationSnapshotCurrent(
         getState,

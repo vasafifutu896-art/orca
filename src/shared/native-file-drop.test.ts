@@ -55,16 +55,31 @@ describe('resolveNativeFileDropPath', () => {
         { nativeFileDropDir: '/repo/src' },
         {
           nativeFileDropTarget: NATIVE_FILE_DROP_TARGET.fileExplorer,
-          nativeFileDropDir: '/repo'
+          nativeFileDropDir: '/repo',
+          nativeFileDropWorkspaceId: 'repo::worktree',
+          nativeFileDropWorkspaceRootPath: '/repo',
+          nativeFileDropOwnerSnapshot: 'ssh-owner-generation-7'
         }
       ])
     ).toEqual({
       target: NATIVE_FILE_DROP_TARGET.fileExplorer,
-      destinationDir: '/repo/src'
+      destinationDir: '/repo/src',
+      workspaceId: 'repo::worktree',
+      workspaceRootPath: '/repo',
+      ownerSnapshot: 'ssh-owner-generation-7'
     })
 
     expect(
       resolveNativeFileDropPath([{ nativeFileDropTarget: NATIVE_FILE_DROP_TARGET.fileExplorer }])
+    ).toEqual({ target: 'rejected' })
+    expect(
+      resolveNativeFileDropPath([
+        {
+          nativeFileDropTarget: NATIVE_FILE_DROP_TARGET.fileExplorer,
+          nativeFileDropDir: '/repo',
+          nativeFileDropWorkspaceId: 'repo::worktree'
+        }
+      ])
     ).toEqual({ target: 'rejected' })
   })
 })
@@ -137,13 +152,22 @@ describe('createNativeFileDropPayload', () => {
   it('preserves file explorer destination routing in accepted payloads', () => {
     expect(
       createNativeFileDropPayload(
-        { target: NATIVE_FILE_DROP_TARGET.fileExplorer, destinationDir: '/repo/src' },
+        {
+          target: NATIVE_FILE_DROP_TARGET.fileExplorer,
+          destinationDir: '/repo/src',
+          workspaceId: 'repo::worktree',
+          workspaceRootPath: '/repo',
+          ownerSnapshot: 'ssh-owner-generation-7'
+        },
         ['/tmp/a']
       )
     ).toEqual({
       destinationDir: '/repo/src',
+      ownerSnapshot: 'ssh-owner-generation-7',
       paths: ['/tmp/a'],
-      target: NATIVE_FILE_DROP_TARGET.fileExplorer
+      target: NATIVE_FILE_DROP_TARGET.fileExplorer,
+      workspaceId: 'repo::worktree',
+      workspaceRootPath: '/repo'
     })
   })
 
@@ -183,7 +207,10 @@ describe('isNativeFileDropPayload', () => {
       isNativeFileDropPayload({
         destinationDir: '/repo/src',
         paths: ['/tmp/a'],
-        target: NATIVE_FILE_DROP_TARGET.fileExplorer
+        target: NATIVE_FILE_DROP_TARGET.fileExplorer,
+        workspaceId: 'repo::worktree',
+        workspaceRootPath: '/repo',
+        ownerSnapshot: 'local-owner'
       })
     ).toBe(true)
     expect(
@@ -209,8 +236,10 @@ describe('isNativeFileDropPayload', () => {
     expect(isNativeFileDropPayload({ paths: ['/tmp/a'], target: 'browser' })).toBe(false)
     expect(
       isNativeFileDropPayload({
+        destinationDir: '/repo/src',
         paths: ['/tmp/a'],
-        target: NATIVE_FILE_DROP_TARGET.fileExplorer
+        target: NATIVE_FILE_DROP_TARGET.fileExplorer,
+        workspaceId: 'repo::worktree'
       })
     ).toBe(false)
     expect(

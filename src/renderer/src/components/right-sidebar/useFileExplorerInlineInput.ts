@@ -14,10 +14,12 @@ import {
   captureFileExplorerOperationGuard,
   getFileExplorerOperationOwner
 } from './file-explorer-operation-owner'
+import { relativePathInsideRoot } from '../../../../shared/cross-platform-path'
 
 type UseFileExplorerInlineInputParams = {
   activeWorktreeId: string | null
   worktreePath: string | null
+  treeRootPath?: string | null
   expanded: Set<string>
   rowProjection: FileExplorerRowProjection
   scrollRef: React.RefObject<HTMLDivElement | null>
@@ -36,6 +38,7 @@ type UseFileExplorerInlineInputResult = {
 export function useFileExplorerInlineInput({
   activeWorktreeId,
   worktreePath,
+  treeRootPath = worktreePath,
   expanded,
   rowProjection,
   scrollRef,
@@ -68,12 +71,12 @@ export function useFileExplorerInlineInput({
     if (!inlineInput || inlineInput.type === 'rename') {
       return -1
     }
-    return rowProjection.getInsertIndexAfterSubtree(inlineInput.parentPath, worktreePath)
-  }, [inlineInput, rowProjection, worktreePath])
+    return rowProjection.getInsertIndexAfterSubtree(inlineInput.parentPath, treeRootPath)
+  }, [inlineInput, rowProjection, treeRootPath])
 
   const startNew = useCallback(
     (type: 'file' | 'folder', parentPath: string, depth: number) => {
-      if (activeWorktreeId && parentPath !== worktreePath && !expanded.has(parentPath)) {
+      if (activeWorktreeId && parentPath !== treeRootPath && !expanded.has(parentPath)) {
         toggleDir(activeWorktreeId, parentPath)
       }
       setInlineInput({
@@ -83,7 +86,7 @@ export function useFileExplorerInlineInput({
         operationOwner: getFileExplorerOperationOwner(activeWorktreeId)
       })
     },
-    [activeWorktreeId, worktreePath, expanded, toggleDir]
+    [activeWorktreeId, treeRootPath, expanded, toggleDir]
   )
 
   const startRename = useCallback(
@@ -212,10 +215,14 @@ export function useFileExplorerInlineInput({
             if (inlineInput.type === 'file') {
               const runtimeEnvironmentId =
                 fileContext.settings.activeRuntimeEnvironmentId?.trim() || null
+              const workspaceRelativePath = relativePathInsideRoot(worktreePath, fullPath)
               openFile(
                 {
                   filePath: fullPath,
-                  relativePath: worktreePath ? fullPath.slice(worktreePath.length + 1) : name,
+                  // Why: direct SSH browsing can create a file above Home.
+                  // Preserve an absolute identity there instead of slicing the
+                  // unrelated Home prefix into a corrupt relative path.
+                  relativePath: workspaceRelativePath ?? fullPath,
                   worktreeId: activeWorktreeId,
                   runtimeEnvironmentId: runtimeEnvironmentId ?? undefined,
                   language: detectLanguage(name),

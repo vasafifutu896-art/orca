@@ -1,4 +1,5 @@
-import { ipcMain, shell, dialog } from 'electron'
+import { BrowserWindow, ipcMain, shell, dialog } from 'electron'
+import type { IpcMainInvokeEvent, OpenDialogOptions, OpenDialogReturnValue } from 'electron'
 import { constants, copyFile, readFile, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, normalize, posix, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,6 +31,16 @@ async function pathExists(pathValue: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function showOpenDialogForSender(
+  event: IpcMainInvokeEvent,
+  options: OpenDialogOptions
+): Promise<OpenDialogReturnValue> {
+  const parent = BrowserWindow.fromWebContents(event.sender)
+  // Why: Orca can run several windows/processes. Parenting upload pickers to
+  // the invoking window keeps the dialog in front of the correct instance.
+  return parent ? dialog.showOpenDialog(parent, options) : dialog.showOpenDialog(options)
 }
 
 async function validateLocalPathTarget(
@@ -210,8 +221,8 @@ export function registerShellHandlers(store: Store): void {
 
   ipcMain.handle(
     'shell:pickDirectory',
-    async (_event, args: { defaultPath?: string }): Promise<string | null> => {
-      const result = await dialog.showOpenDialog({
+    async (event, args: { defaultPath?: string }): Promise<string | null> => {
+      const result = await showOpenDialogForSender(event, {
         defaultPath: args.defaultPath,
         // Why: callers only need an existing folder grant; enabling native
         // creation can leave typed prefix directories behind on macOS.
@@ -234,6 +245,15 @@ export function registerShellHandlers(store: Store): void {
       return null
     }
     return result.filePaths[0]
+  })
+
+  // Why: remote file managers commonly upload batches; keep this additive so
+  // attachment call sites retain their existing single-file contract.
+  ipcMain.handle('shell:pickFiles', async (event): Promise<string[]> => {
+    const result = await showOpenDialogForSender(event, {
+      properties: ['openFile', 'multiSelections']
+    })
+    return result.canceled ? [] : result.filePaths
   })
 
   // Why: window.prompt() and <input type="file"> are unreliable in Electron,

@@ -104,6 +104,20 @@ function relativePathMatchesNameFilter(relativePath: string, tokens: readonly st
   return tokens.every((token) => haystack.includes(token))
 }
 
+export function fileExplorerNameMatchesFilter(name: string, query: string): boolean {
+  if (isFileExplorerNameFilterQueryTooLarge(query)) {
+    return false
+  }
+  return relativePathMatchesNameFilter(name, getFileExplorerNameFilterTokens(query))
+}
+
+export function filterFileExplorerNodesByName(
+  nodes: readonly TreeNode[],
+  query: string
+): TreeNode[] {
+  return nodes.filter((node) => fileExplorerNameMatchesFilter(node.name, query))
+}
+
 export function getFileExplorerNameFilterIgnoredQueryRelativePaths(
   source: FileExplorerNameFilterProjectionSource,
   showDotfiles: boolean

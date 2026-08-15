@@ -13,7 +13,11 @@ import {
   resolveWorktreeOperationRoute,
   type WorktreeOperationRoute
 } from '@/lib/worktree-operation-route'
-import { captureWorktreeOperationGenerationGuard } from '@/lib/worktree-operation-generation'
+import {
+  captureWorktreeOperationGenerationGuard,
+  captureWorktreeOperationGenerationSnapshot,
+  type WorktreeOperationGenerationSnapshot
+} from '@/lib/worktree-operation-generation'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 
 export type FileExplorerOperationRoute = {
@@ -26,6 +30,7 @@ export type FileExplorerOperationRoute = {
 
 export type FileExplorerOperationGuard = {
   route: FileExplorerOperationRoute
+  ownerSnapshot: string
   assertCurrent: () => FileExplorerOperationRoute
 }
 
@@ -39,6 +44,9 @@ export type FileExplorerOwnerState = Pick<
   | 'projectGroups'
   | 'restoredRuntimeHostIdByWorkspaceSessionKey'
 >
+
+type FileExplorerOperationSnapshotState = FileExplorerOwnerState &
+  Pick<AppState, 'sshConnectionStates' | 'sshStateByEnvironment'>
 
 export function getFileExplorerOperationOwnerFromState(
   state: FileExplorerOwnerState,
@@ -97,6 +105,35 @@ export function getFileExplorerOperationOwner(
   worktreeId: string | null | undefined
 ): FileExplorerOperationOwner {
   return getFileExplorerOperationOwnerFromState(useAppStore.getState(), worktreeId)
+}
+
+export function serializeFileExplorerOperationSnapshot(
+  snapshot: WorktreeOperationGenerationSnapshot
+): string {
+  return JSON.stringify([
+    1,
+    snapshot.route.runtimeEnvironmentId,
+    snapshot.route.executionHostId,
+    snapshot.runtimeConnectionGeneration,
+    snapshot.runtimePairingRevision ?? null,
+    snapshot.runtimeSshGeneration,
+    snapshot.nestedSshGeneration,
+    snapshot.directSshGeneration
+  ])
+}
+
+export function getFileExplorerOperationSnapshotFromState(
+  state: FileExplorerOperationSnapshotState,
+  worktreeId: string | null | undefined
+): string | null {
+  const owner = getFileExplorerOperationOwnerFromState(state, worktreeId)
+  const generationRoute = getFileExplorerGenerationRoute(owner)
+  if (!generationRoute) {
+    return null
+  }
+  return serializeFileExplorerOperationSnapshot(
+    captureWorktreeOperationGenerationSnapshot(generationRoute)
+  )
 }
 
 export function getFileExplorerOperationRoute(
@@ -184,6 +221,7 @@ export function captureFileExplorerOperationGuard(
   }
   return {
     route: guardedRoute,
+    ownerSnapshot: serializeFileExplorerOperationSnapshot(generationGuard.snapshot),
     assertCurrent: () => {
       generationGuard.assertCurrent()
       if (

@@ -7,6 +7,7 @@ import {
 import { getEffectiveFileExplorerIgnoredPaths } from './use-file-explorer-ignored-paths'
 import {
   FILE_EXPLORER_NAME_FILTER_QUERY_MAX_BYTES,
+  filterFileExplorerNodesByName,
   getFileExplorerNameFilterExpandedPaths,
   getFileExplorerNameFilterIgnoredQueryRelativePaths,
   getFileExplorerNameFilterTokens
@@ -46,6 +47,13 @@ afterEach(() => {
 })
 
 describe('file explorer visible row projection', () => {
+  it('filters only the current remote directory while preserving real folder nodes', () => {
+    const nodes = [row('hosts'), row('hostname'), row('ssh', true)]
+
+    expect(filterFileExplorerNodesByName(nodes, 'host')).toEqual(nodes.slice(0, 2))
+    expect(filterFileExplorerNodesByName(nodes, 'ssh')[0]?.isDirectory).toBe(true)
+  })
+
   it('keeps dotfiles and ignored files visible when toggles are on', () => {
     const projection = createVisibleFileExplorerRowProjection(
       input({

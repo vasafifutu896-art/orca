@@ -74,6 +74,24 @@ function stopRightButtonMenuSelection(event: React.PointerEvent): void {
   event.stopPropagation()
 }
 
+export function handleFileExplorerNameDoubleClick({
+  action,
+  node,
+  onActivate,
+  onRename
+}: {
+  action: 'rename' | 'activate'
+  node: TreeNode
+  onActivate: () => void
+  onRename: (node: TreeNode) => void
+}): void {
+  if (action === 'activate') {
+    onActivate()
+  } else {
+    onRename(node)
+  }
+}
+
 export type InlineInput = {
   parentPath: string
   type: 'file' | 'folder' | 'rename'
@@ -269,11 +287,13 @@ type FileExplorerRowProps = {
   supportsFolderDownload?: boolean
   canOpenInOrcaBrowser: boolean
   canCollapseFolderSubtree: boolean
+  canFindInFolder: boolean
   targetDir: string
   targetDepth: number
   selectionSize: number
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
   onDoubleClick: () => void
+  nameDoubleClickAction?: 'rename' | 'activate'
   onViewFile: () => void
   onContextMenuSelect: () => void
   onCopyPaths: (pathKind: 'absolute' | 'relative') => void
@@ -298,8 +318,8 @@ export function shouldShowCollapseFolderAction(node: TreeNode, isExpanded: boole
   return node.isDirectory && isExpanded
 }
 
-export function shouldShowFindInFolderAction(node: TreeNode): boolean {
-  return node.isDirectory
+export function shouldShowFindInFolderAction(node: TreeNode, canFindInFolder = true): boolean {
+  return node.isDirectory && canFindInFolder
 }
 
 export function shouldShowOpenInTerminalAction(node: TreeNode): boolean {
@@ -327,6 +347,10 @@ export function shouldShowRemoteDownloadAction(
     hasDownloadCapability &&
     (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ !== true
   )
+}
+
+export function shouldShowLocalRevealAction(connectionId?: string | null): boolean {
+  return !connectionId
 }
 
 export function shouldShowCopyFileAction(
@@ -458,11 +482,13 @@ export function FileExplorerRow({
   supportsFolderDownload = false,
   canOpenInOrcaBrowser,
   canCollapseFolderSubtree,
+  canFindInFolder,
   targetDir,
   targetDepth,
   selectionSize,
   onClick,
   onDoubleClick,
+  nameDoubleClickAction = 'rename',
   onViewFile,
   onContextMenuSelect,
   onCopyPaths,
@@ -665,10 +691,16 @@ export function FileExplorerRow({
                   : undefined
             }
             onDoubleClick={(e) => {
-              // Why: scope rename to the filename text so "pin preview" and the
-              // directory toggle stay reachable on the icon and empty row area.
+              // Why: the tree view uses filename double-click as a precise
+              // rename gesture, while the flat SSH browser follows file-manager
+              // convention and opens the named folder/file instead.
               e.stopPropagation()
-              onStartRename(node)
+              handleFileExplorerNameDoubleClick({
+                action: nameDoubleClickAction,
+                node,
+                onActivate: onDoubleClick,
+                onRename: onStartRename
+              })
             }}
           >
             {node.name}
@@ -813,7 +845,7 @@ export function FileExplorerRow({
             )}
           </ContextMenuItem>
         )}
-        {shouldShowFindInFolderAction(node) && (
+        {shouldShowFindInFolderAction(node, canFindInFolder) && (
           <ContextMenuItem onSelect={onFindInFolder}>
             <Search />
             {translate(
@@ -825,37 +857,41 @@ export function FileExplorerRow({
             ) : null}
           </ContextMenuItem>
         )}
-        <ContextMenuItem
-          onSelect={() => {
-            const state = useAppStore.getState()
-            const activeWorktree = Object.values(state.worktreesByRepo)
-              .flat()
-              .find((worktree) => worktree.id === activeWorktreeId)
-            const activeRepo = activeWorktree
-              ? state.repos.find((repo) => repo.id === activeWorktree.repoId)
-              : null
-            if (
-              isLocalPathOpenBlocked(state.settings, {
-                connectionId: activeRepo?.connectionId ?? null
-              })
-            ) {
-              showLocalPathOpenBlockedToast()
-              return
-            }
-            window.api.shell.openPath(node.path)
-          }}
-        >
-          <ExternalLink />
-          {revealLabel}
-        </ContextMenuItem>
+        {shouldShowLocalRevealAction(connectionId) ? (
+          <ContextMenuItem
+            onSelect={() => {
+              const state = useAppStore.getState()
+              const activeWorktree = Object.values(state.worktreesByRepo)
+                .flat()
+                .find((worktree) => worktree.id === activeWorktreeId)
+              const activeRepo = activeWorktree
+                ? state.repos.find((repo) => repo.id === activeWorktree.repoId)
+                : null
+              if (
+                isLocalPathOpenBlocked(state.settings, {
+                  connectionId: activeRepo?.connectionId ?? null
+                })
+              ) {
+                showLocalPathOpenBlockedToast()
+                return
+              }
+              window.api.shell.openPath(node.path)
+            }}
+          >
+            <ExternalLink />
+            {revealLabel}
+          </ContextMenuItem>
+        ) : null}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => onStartRename(node)}>
           <Pencil />
           {translate('auto.components.right.sidebar.FileExplorerRow.fc747429bf', 'Rename')}
           <ContextMenuShortcut>
-            {isMac
-              ? '↩'
-              : translate('auto.components.right.sidebar.FileExplorerRow.a06551beee', 'Enter')}
+            {nameDoubleClickAction === 'activate'
+              ? translate('auto.components.right.sidebar.FileExplorerRow.renameShortcutF2', 'F2')
+              : isMac
+                ? '↩'
+                : translate('auto.components.right.sidebar.FileExplorerRow.a06551beee', 'Enter')}
           </ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuItem variant="destructive" onSelect={onRequestDelete}>

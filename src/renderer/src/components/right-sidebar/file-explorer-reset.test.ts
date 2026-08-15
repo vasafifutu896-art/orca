@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getFileExplorerResetIdentity,
+  getFileExplorerVisibleExpandedDirs,
   getVisibleFileExplorerWorktreePath,
   shouldResetFileExplorerForVisibleWorktree
 } from './file-explorer-reset'
@@ -49,5 +51,50 @@ describe('shouldResetFileExplorerForVisibleWorktree', () => {
 
   it('resets when the visible worktree path changes', () => {
     expect(shouldResetFileExplorerForVisibleWorktree('/repo', '/repo-next')).toBe(true)
+  })
+})
+
+describe('getFileExplorerResetIdentity', () => {
+  it('distinguishes SSH workspaces that share the same remote Home path', () => {
+    const first = getFileExplorerResetIdentity({
+      worktreeId: 'folder:first',
+      visibleRootPath: '/root',
+      connectionId: 'ssh-first',
+      connectionGeneration: 3
+    })
+    const second = getFileExplorerResetIdentity({
+      worktreeId: 'folder:second',
+      visibleRootPath: '/root',
+      connectionId: 'ssh-second',
+      connectionGeneration: 1
+    })
+
+    expect(first).not.toBe(second)
+  })
+
+  it('changes after the owning SSH connection reconnects', () => {
+    const before = getFileExplorerResetIdentity({
+      worktreeId: 'folder:first',
+      visibleRootPath: '/root',
+      connectionId: 'ssh-first',
+      connectionGeneration: 3
+    })
+    const after = getFileExplorerResetIdentity({
+      worktreeId: 'folder:first',
+      visibleRootPath: '/root',
+      connectionId: 'ssh-first',
+      connectionGeneration: 4
+    })
+
+    expect(before).not.toBe(after)
+  })
+})
+
+describe('getFileExplorerVisibleExpandedDirs', () => {
+  it('removes hidden tree expansions from the flat remote browser', () => {
+    const expanded = new Set(['/root/src', '/root/packages'])
+
+    expect(getFileExplorerVisibleExpandedDirs(expanded, true)).toEqual(new Set())
+    expect(getFileExplorerVisibleExpandedDirs(expanded, false)).toBe(expanded)
   })
 })

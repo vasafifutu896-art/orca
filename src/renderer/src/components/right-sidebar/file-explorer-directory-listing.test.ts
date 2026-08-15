@@ -10,7 +10,10 @@ vi.mock('./file-explorer-operation-owner', () => ({
   getFileExplorerOwnerUnresolvedMessage: () => 'unresolved'
 }))
 
-import { readFileExplorerDirectory } from './file-explorer-directory-listing'
+import {
+  fileExplorerEntriesToTreeNodes,
+  readFileExplorerDirectory
+} from './file-explorer-directory-listing'
 
 describe('readFileExplorerDirectory', () => {
   it('re-sorts backend order — remote-runtime and paired-web routes return the host order verbatim', async () => {
@@ -28,5 +31,20 @@ describe('readFileExplorerDirectory', () => {
       '99 - a.txt',
       '100 - b.txt'
     ])
+  })
+})
+
+describe('fileExplorerEntriesToTreeNodes', () => {
+  it('keeps an absolute identity when direct SSH browsing leaves Home', () => {
+    const [node] = fileExplorerEntriesToTreeNodes(
+      [{ name: 'hosts', isDirectory: false, isSymlink: false }],
+      '/etc',
+      -1,
+      '/home/dev',
+      { kind: 'ssh', connectionId: 'ssh-1' }
+    )
+
+    expect(node.path).toBe('/etc/hosts')
+    expect(node.relativePath).toBe('/etc/hosts')
   })
 })

@@ -21,6 +21,7 @@ export type ShellApi = {
   openFileUri: (uri: string) => Promise<void>
   pathExists: (path: string) => Promise<boolean>
   pickAttachment: () => Promise<string | null>
+  pickFiles: () => Promise<string[]>
   pickImage: () => Promise<string | null>
   pickRepoIconImage: () => Promise<{
     dataUrl: string

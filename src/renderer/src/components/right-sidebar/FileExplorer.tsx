@@ -9,7 +9,10 @@ import { folderRelativePathToIncludeGlob } from './file-search-include-pattern'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { isGitRepoKind } from '../../../../shared/repo-kind'
+import { relativePathInsideRoot } from '../../../../shared/cross-platform-path'
 import {
+  getFileExplorerResetIdentity,
+  getFileExplorerVisibleExpandedDirs,
   getVisibleFileExplorerWorktreePath,
   shouldResetFileExplorerForVisibleWorktree
 } from './file-explorer-reset'
@@ -17,6 +20,7 @@ import { FileExplorerBackgroundMenu } from './FileExplorerBackgroundMenu'
 import { FileExplorerNameFilter } from './FileExplorerNameFilter'
 import { FileExplorerQueryStrip } from './FileExplorerQueryStrip'
 import { FileExplorerToolbar } from './FileExplorerToolbar'
+import { RemoteFileToolbar, type RemoteFileToolbarBusyAction } from './RemoteFileToolbar'
 import { SearchFilters } from './SearchFilters'
 import { SearchQueryRow } from './SearchQueryRow'
 import { SearchResultsPane } from './SearchResultsPane'
@@ -24,6 +28,7 @@ import { useFileSearchPanel } from './useFileSearchPanel'
 import { FileExplorerTreeStatus } from './FileExplorerTreeStatus'
 import { FileExplorerVirtualRows } from './FileExplorerVirtualRows'
 import {
+  filterFileExplorerNodesByName,
   getNameFilterCollapsedPathsAfterExpand,
   getNextNameFilterCollapsedPaths,
   isFileExplorerNameFilterQueryTooLarge
@@ -42,6 +47,7 @@ import { useFileExplorerDragDrop } from './useFileExplorerDragDrop'
 import { useFileExplorerImport } from './useFileExplorerImport'
 import { useFileExplorerManualRefresh } from './useFileExplorerManualRefresh'
 import { useFileExplorerTree } from './useFileExplorerTree'
+import { useRemoteFileBrowser } from './useRemoteFileBrowser'
 import { decideExpandedDirLoad } from './file-explorer-stale-dir-cache'
 import { useFileExplorerWatch } from './useFileExplorerWatch'
 import {
@@ -58,6 +64,12 @@ import type { RightSidebarExplorerView } from '../../../../shared/ui-chrome-type
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { createNewTerminalTab } from '@/components/terminal/terminal-tab-create'
 import { useWorkspaceFileBrowserActionPredicate } from '@/lib/file-preview'
+import { downloadRemoteFile, shouldShowRemoteDownloadAction } from './FileExplorerRow'
+import { getConnectionIdFromState } from '@/lib/connection-context'
+import {
+  getFileExplorerOperationOwnerFromState,
+  getFileExplorerOperationSnapshotFromState
+} from './file-explorer-operation-owner'
 
 function FileExplorerFiles(): React.JSX.Element {
   const explorerView = useAppStore((s) => s.rightSidebarExplorerView)
@@ -85,8 +97,22 @@ function FileExplorerFiles(): React.JSX.Element {
     useWorkspaceFileBrowserActionPredicate(activeWorktreeId)
   const activeWorktree = useActiveWorktree()
   const activeRepo = useRepoById(activeWorktree?.repoId ?? null)
+  const resolvedConnectionId = useAppStore((state) =>
+    getConnectionIdFromState(state, activeWorktreeId)
+  )
+  const hasDirectSshFileOwner = useAppStore(
+    (state) => getFileExplorerOperationOwnerFromState(state, activeWorktreeId).kind === 'ssh'
+  )
+  const nativeFileDropOwnerSnapshot = useAppStore((state) =>
+    getFileExplorerOperationSnapshotFromState(state, activeWorktreeId)
+  )
+  const activeSshConnectionGeneration = useAppStore((state) =>
+    resolvedConnectionId
+      ? state.sshConnectionStates.get(resolvedConnectionId)?.connectionGeneration
+      : undefined
+  )
   const supportsFolderDownload = useAppStore((s) => {
-    const connectionId = activeRepo?.connectionId
+    const connectionId = resolvedConnectionId
     return connectionId
       ? s.sshConnectionStates.get(connectionId)?.supportsFolderDownload === true
       : false
@@ -115,6 +141,18 @@ function FileExplorerFiles(): React.JSX.Element {
   const toggleShowDotfilesForWorktree = useAppStore((s) => s.toggleShowDotfilesForWorktree)
 
   const worktreePath = activeWorktree?.path ?? null
+  const connectionId = resolvedConnectionId ?? null
+  const remoteFileBrowserEnabled =
+    Boolean(connectionId) &&
+    hasDirectSshFileOwner &&
+    (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ !== true
+  const remoteBrowser = useRemoteFileBrowser({
+    enabled: remoteFileBrowserEnabled,
+    workspaceId: activeWorktreeId,
+    homePath: worktreePath,
+    connectionId,
+    connectionGeneration: activeSshConnectionGeneration
+  })
   const runtimeDownloadContext = useMemo(
     () =>
       activeRuntimeEnvironmentId && activeWorktreeId && worktreePath
@@ -122,16 +160,22 @@ function FileExplorerFiles(): React.JSX.Element {
             settings: { activeRuntimeEnvironmentId },
             worktreeId: activeWorktreeId,
             worktreePath,
-            connectionId: activeRepo?.connectionId ?? undefined
+            connectionId: connectionId ?? undefined
           }
         : null,
-    [activeRepo?.connectionId, activeRuntimeEnvironmentId, activeWorktreeId, worktreePath]
+    [activeRuntimeEnvironmentId, activeWorktreeId, connectionId, worktreePath]
   )
   const isFilesViewActive = explorerView === 'files'
   const visibleFilesWorktreePath = getVisibleFileExplorerWorktreePath({
     explorerView,
     rightSidebarOpen,
-    worktreePath
+    worktreePath: remoteFileBrowserEnabled ? remoteBrowser.currentPath : worktreePath
+  })
+  const explorerResetIdentity = getFileExplorerResetIdentity({
+    worktreeId: activeWorktreeId,
+    visibleRootPath: visibleFilesWorktreePath,
+    connectionId,
+    connectionGeneration: remoteFileBrowserEnabled ? activeSshConnectionGeneration : undefined
   })
   const repoName = activeRepo?.displayName ?? (worktreePath ? basename(worktreePath) : '')
   const activeRepoSupportsGit = activeRepo ? isGitRepoKind(activeRepo) : false
@@ -140,6 +184,10 @@ function FileExplorerFiles(): React.JSX.Element {
     () =>
       activeWorktreeId ? (expandedDirs[activeWorktreeId] ?? new Set<string>()) : new Set<string>(),
     [activeWorktreeId, expandedDirs]
+  )
+  const visibleExpanded = useMemo(
+    () => getFileExplorerVisibleExpandedDirs(expanded, remoteFileBrowserEnabled),
+    [expanded, remoteFileBrowserEnabled]
   )
 
   const {
@@ -154,7 +202,7 @@ function FileExplorerFiles(): React.JSX.Element {
     refreshDir,
     isDirStale,
     resetAndLoad
-  } = useFileExplorerTree(worktreePath, expanded, activeWorktreeId)
+  } = useFileExplorerTree(worktreePath, visibleExpanded, activeWorktreeId, visibleFilesWorktreePath)
   const hasNameFilterQuery = nameFilterQuery.trim().length > 0
   const nameFilterQueryTooLarge = useMemo(
     () => isFileExplorerNameFilterQueryTooLarge(nameFilterQuery),
@@ -167,12 +215,12 @@ function FileExplorerFiles(): React.JSX.Element {
     }
   }, [hasNameFilter])
   const nameFilterFiles = useRuntimeFileListForWorktree({
-    enabled: hasNameFilter && !nameFilterQueryTooLarge,
+    enabled: hasNameFilter && !nameFilterQueryTooLarge && !remoteFileBrowserEnabled,
     worktreeId: activeWorktreeId
   })
   const nameFilterSource = useMemo(
     () =>
-      hasNameFilter
+      hasNameFilter && !remoteFileBrowserEnabled
         ? {
             query: nameFilterQuery,
             operationOwner: nameFilterFiles.operationOwner,
@@ -189,9 +237,29 @@ function FileExplorerFiles(): React.JSX.Element {
       nameFilterFiles.loading,
       nameFilterFiles.operationOwner,
       nameFilterQuery,
-      nameFilterQueryTooLarge
+      nameFilterQueryTooLarge,
+      remoteFileBrowserEnabled
     ]
   )
+  const projectionDirCache = useMemo(() => {
+    if (!remoteFileBrowserEnabled || !hasNameFilter || !visibleFilesWorktreePath || !rootCache) {
+      return dirCache
+    }
+    return {
+      ...dirCache,
+      [visibleFilesWorktreePath]: {
+        ...rootCache,
+        children: filterFileExplorerNodesByName(rootCache.children, nameFilterQuery)
+      }
+    }
+  }, [
+    dirCache,
+    hasNameFilter,
+    nameFilterQuery,
+    remoteFileBrowserEnabled,
+    rootCache,
+    visibleFilesWorktreePath
+  ])
   const {
     rowProjection,
     ignoredByRelativePath,
@@ -200,22 +268,22 @@ function FileExplorerFiles(): React.JSX.Element {
     toggleGitIgnoredFiles
   } = useFileExplorerVisibleRowProjection(
     activeWorktreeId,
-    visibleFilesWorktreePath,
-    dirCache,
-    expanded,
+    hasNameFilter && !remoteFileBrowserEnabled ? worktreePath : visibleFilesWorktreePath,
+    projectionDirCache,
+    visibleExpanded,
     activeRepoSupportsGit && isFilesViewActive,
     showDotfiles,
     nameFilterSource,
-    hasNameFilter ? nameFilterCollapsedPaths : null
+    hasNameFilter && !remoteFileBrowserEnabled ? nameFilterCollapsedPaths : null
   )
   const rowExpandedPaths = useMemo(
     () =>
       hasNameFilter
         ? nameFilterExpandedPaths
         : nameFilterExpandedPaths.size > 0
-          ? new Set([...expanded, ...nameFilterExpandedPaths])
-          : expanded,
-    [expanded, hasNameFilter, nameFilterExpandedPaths]
+          ? new Set([...visibleExpanded, ...nameFilterExpandedPaths])
+          : visibleExpanded,
+    [hasNameFilter, nameFilterExpandedPaths, visibleExpanded]
   )
   const visibleRowCount = rowProjection.getVisibleCount()
   const manualRefresh = useFileExplorerManualRefresh(refreshTree)
@@ -249,6 +317,7 @@ function FileExplorerFiles(): React.JSX.Element {
   )
 
   const [flashingPath, setFlashingPath] = useState<string | null>(null)
+  const [isRemoteDownloadBusy, setIsRemoteDownloadBusy] = useState(false)
   const [bgMenuOpen, setBgMenuOpen] = useState(false)
   const [bgMenuPoint, setBgMenuPoint] = useState({ x: 0, y: 0 })
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -302,35 +371,36 @@ function FileExplorerFiles(): React.JSX.Element {
     clearNativeDragState
   } = useFileExplorerDragDrop({
     worktreePath,
+    rootDropDir: visibleFilesWorktreePath,
     activeWorktreeId,
-    expanded,
+    expanded: visibleExpanded,
     toggleDir,
     refreshDir,
     scrollRef,
     getOperationOwnerForPath: (path) => rowProjection.getRowByPath(path)?.operationOwner
   })
 
-  const lastResetWorktreePathRef = useRef<string | null>(null)
+  const lastResetIdentityRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!visibleFilesWorktreePath) {
+    if (!visibleFilesWorktreePath || !explorerResetIdentity) {
       return
     }
     // Why: the sidebar remains mounted while closed to preserve caches, but
     // loading the hidden tree would probe every clicked workspace on macOS.
     if (
       !shouldResetFileExplorerForVisibleWorktree(
-        lastResetWorktreePathRef.current,
-        visibleFilesWorktreePath
+        lastResetIdentityRef.current,
+        explorerResetIdentity
       )
     ) {
       return
     }
-    lastResetWorktreePathRef.current = visibleFilesWorktreePath
+    lastResetIdentityRef.current = explorerResetIdentity
     resetSelection()
     setNameFilterQuery('')
     resetAndLoad()
     clearFileExplorerUndoHistory()
-  }, [visibleFilesWorktreePath, resetSelection]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [explorerResetIdentity, visibleFilesWorktreePath, resetSelection]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Why: on app startup the file explorer loads before SSH providers are
   // registered, so readDir fails for remote worktrees. When the SSH
@@ -348,7 +418,7 @@ function FileExplorerFiles(): React.JSX.Element {
   }, [sshConnectedGeneration, visibleFilesWorktreePath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!visibleFilesWorktreePath) {
+    if (!visibleFilesWorktreePath || remoteFileBrowserEnabled) {
       return
     }
     for (const dirPath of expanded) {
@@ -361,7 +431,7 @@ function FileExplorerFiles(): React.JSX.Element {
       const depth = splitPathSegments(dirPath.slice(visibleFilesWorktreePath.length + 1)).length - 1
       void loadDir(dirPath, depth, decision === 'reload' ? { force: true } : undefined)
     }
-  }, [expanded, visibleFilesWorktreePath]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expanded, remoteFileBrowserEnabled, visibleFilesWorktreePath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     inlineInput,
@@ -372,32 +442,33 @@ function FileExplorerFiles(): React.JSX.Element {
     handleInlineSubmit
   } = useFileExplorerInlineInput({
     activeWorktreeId,
-    worktreePath: visibleFilesWorktreePath,
-    expanded,
+    worktreePath,
+    treeRootPath: visibleFilesWorktreePath,
+    expanded: visibleExpanded,
     rowProjection,
     scrollRef,
     refreshDir
   })
   const handleExplorerBackgroundDoubleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!worktreePath || inlineInput) {
+      if (!visibleFilesWorktreePath || inlineInput) {
         return
       }
       const target = event.target as HTMLElement
       if (target.closest('[data-slot="context-menu-trigger"]')) {
         return
       }
-      startNew('file', worktreePath, 0)
+      startNew('file', visibleFilesWorktreePath, 0)
     },
-    [inlineInput, startNew, worktreePath]
+    [inlineInput, startNew, visibleFilesWorktreePath]
   )
 
   useFileExplorerWatch({
-    worktreePath: visibleFilesWorktreePath,
+    worktreePath,
     activeWorktreeId,
     dirCache,
     setDirCache,
-    expanded,
+    expanded: visibleExpanded,
     setSelectedPath: setSingleSelectedPath,
     refreshDir,
     refreshTree,
@@ -407,8 +478,8 @@ function FileExplorerFiles(): React.JSX.Element {
     operationOwner: rootCache?.operationOwner
   })
 
-  useFileExplorerImport({
-    worktreePath: visibleFilesWorktreePath,
+  const fileImport = useFileExplorerImport({
+    worktreePath,
     activeWorktreeId,
     refreshDir,
     clearNativeDragState,
@@ -440,7 +511,7 @@ function FileExplorerFiles(): React.JSX.Element {
     worktreePath: visibleFilesWorktreePath,
     pendingExplorerReveal,
     clearPendingExplorerReveal,
-    expanded,
+    expanded: visibleExpanded,
     dirCache,
     rootCache,
     rowProjection,
@@ -485,6 +556,33 @@ function FileExplorerFiles(): React.JSX.Element {
     () => rowProjection.getRowsByPaths(selectedPaths),
     [rowProjection, selectedPaths]
   )
+  const remoteDownloadNode = selectedNodes.length === 1 ? selectedNodes[0] : null
+  const canDownloadRemoteSelection = Boolean(
+    remoteDownloadNode &&
+    shouldShowRemoteDownloadAction(remoteDownloadNode, connectionId, null, supportsFolderDownload)
+  )
+  const handleDownloadRemoteSelection = useCallback(async () => {
+    if (!remoteDownloadNode || !connectionId || !canDownloadRemoteSelection) {
+      return
+    }
+    setIsRemoteDownloadBusy(true)
+    try {
+      await downloadRemoteFile(remoteDownloadNode, connectionId)
+    } finally {
+      setIsRemoteDownloadBusy(false)
+    }
+  }, [canDownloadRemoteSelection, connectionId, remoteDownloadNode])
+  const remoteToolbarBusyAction: RemoteFileToolbarBusyAction = fileImport.uploadAction
+    ? fileImport.uploadAction === 'files'
+      ? 'upload-files'
+      : 'upload-folder'
+    : isRemoteDownloadBusy
+      ? 'download'
+      : remoteBrowser.isNavigating
+        ? 'navigate'
+        : manualRefresh.isRefreshing
+          ? 'refresh'
+          : null
   const handleToggleNameFilterDir = useCallback(
     (_worktreeId: string, dirPath: string) => {
       setNameFilterCollapsedPaths((current) =>
@@ -498,6 +596,7 @@ function FileExplorerFiles(): React.JSX.Element {
       getNameFilterCollapsedPathsAfterExpand(current, dirPath)
     )
   }, [])
+  const ignoreRemoteDirectoryExpansion = useCallback(() => {}, [])
   const { handleClick, handleDoubleClick, handleWheelCapture, cancelPendingDirToggle } =
     useFileExplorerHandlers({
       activeWorktreeId,
@@ -505,6 +604,7 @@ function FileExplorerFiles(): React.JSX.Element {
       openFile,
       makePreviewFilePermanent,
       toggleDir: hasNameFilter ? handleToggleNameFilterDir : toggleDir,
+      canToggleDirectories: !remoteFileBrowserEnabled,
       loadDir,
       statPath,
       authorizeExternalPath: window.api.fs.authorizeExternalPath,
@@ -512,15 +612,30 @@ function FileExplorerFiles(): React.JSX.Element {
       setSelectedPath: setSingleSelectedPath,
       scrollRef
     })
+  const navigateKnownRemoteDirectory = remoteBrowser.navigateKnownDirectory
+  const handleRowDoubleClick = useCallback(
+    (node: TreeNode) => {
+      if (remoteFileBrowserEnabled && node.isDirectory) {
+        navigateKnownRemoteDirectory(node.path)
+        return
+      }
+      handleDoubleClick(node)
+    },
+    [handleDoubleClick, navigateKnownRemoteDirectory, remoteFileBrowserEnabled]
+  )
 
   // Why: pass a stable activator so arrow-key navigation can hand the same
   // activate-toggles-folder / open-file-preview behavior the click handler
   // already uses, without the keyboard path re-implementing symlink handling.
   const activateNode = useCallback(
     (node: TreeNode) => {
+      if (remoteFileBrowserEnabled && node.isDirectory) {
+        navigateKnownRemoteDirectory(node.path)
+        return
+      }
       void handleClick(node)
     },
-    [handleClick]
+    [handleClick, navigateKnownRemoteDirectory, remoteFileBrowserEnabled]
   )
   // Why: a rename can start while a name click is still holding back its
   // directory toggle; drop it so the tree doesn't shift under the input.
@@ -542,7 +657,8 @@ function FileExplorerFiles(): React.JSX.Element {
     containerRef: explorerShellRef,
     rowProjection,
     expandedPaths: rowExpandedPaths,
-    canToggleDirectories: true,
+    canToggleDirectories: !remoteFileBrowserEnabled,
+    enterActivatesNode: remoteFileBrowserEnabled,
     inlineInput,
     selectedPaths,
     selectedNode,
@@ -601,6 +717,12 @@ function FileExplorerFiles(): React.JSX.Element {
     },
     [activeWorktreeId, showRightSidebarSearch]
   )
+  const canFindInFolder = useCallback(
+    (node: TreeNode) =>
+      !remoteFileBrowserEnabled ||
+      (worktreePath !== null && relativePathInsideRoot(worktreePath, node.path) !== null),
+    [remoteFileBrowserEnabled, worktreePath]
+  )
 
   const handleAddFolderAsProject = useCallback(
     (node: TreeNode) => {
@@ -645,14 +767,17 @@ function FileExplorerFiles(): React.JSX.Element {
   // present. Without this, external file drops would have no target surface
   // when the tree is empty, still loading, or showing a read error.
   const isEmptyState = visibleRowCount === 0 && !inlineInput
-  const isNameFilterLoading = nameFilterSource?.relativePaths === null
+  const isNameFilterLoading = remoteFileBrowserEnabled
+    ? (rootCache?.loading ?? true)
+    : nameFilterSource?.relativePaths === null
   const isLoading =
     isEmptyState && (hasNameFilter ? isNameFilterLoading : (rootCache?.loading ?? true))
-  const treeError = hasNameFilter ? nameFilterFiles.loadError : rootError
+  const treeError =
+    remoteFileBrowserEnabled || !hasNameFilter ? rootError : nameFilterFiles.loadError
   const hasError = isEmptyState && !isLoading && !!treeError
   const showTree = !isEmptyState
   const emptyMessage =
-    hasNameFilter && !nameFilterFiles.loadError
+    hasNameFilter && !treeError
       ? translate(
           'auto.components.right.sidebar.FileExplorer.2f4483d6c4',
           'No files match this filter'
@@ -672,9 +797,10 @@ function FileExplorerFiles(): React.JSX.Element {
         <FileExplorerToolbar
           repoName={repoName}
           worktreePath={worktreePath}
-          connectionId={activeRepo?.connectionId ?? null}
+          connectionId={connectionId}
           refresh={manualRefresh}
           canRefresh={isFilesViewActive}
+          showTreeActions={!remoteFileBrowserEnabled}
           canCollapseAll={canCollapseAll}
           onCollapseAll={handleCollapseAll}
           showGitIgnoredFilesToggle={activeRepoSupportsGit}
@@ -683,6 +809,26 @@ function FileExplorerFiles(): React.JSX.Element {
           showDotfiles={showDotfiles}
           onToggleDotfiles={handleToggleDotfiles}
         />
+        {remoteFileBrowserEnabled && visibleFilesWorktreePath ? (
+          <RemoteFileToolbar
+            pathValue={remoteBrowser.pathValue}
+            onPathValueChange={remoteBrowser.setPathValue}
+            onNavigatePath={(path) => void remoteBrowser.navigatePath(path)}
+            onNavigateUp={remoteBrowser.navigateUp}
+            onNavigateHome={remoteBrowser.navigateHome}
+            onRefresh={manualRefresh.handleRefresh}
+            onUploadFiles={() => void fileImport.uploadFiles(visibleFilesWorktreePath)}
+            onUploadFolder={() => void fileImport.uploadFolder(visibleFilesWorktreePath)}
+            onDownloadSelected={() => void handleDownloadRemoteSelection()}
+            canNavigateUp={remoteBrowser.canNavigateUp}
+            canNavigateHome={remoteBrowser.canNavigateHome}
+            canRefresh={isFilesViewActive && !manualRefresh.isRefreshing}
+            canUploadFiles={isFilesViewActive}
+            canUploadFolder={isFilesViewActive}
+            canDownloadSelected={canDownloadRemoteSelection}
+            busyAction={remoteToolbarBusyAction}
+          />
+        ) : null}
         <FileExplorerQueryStrip view={explorerView} onSelectView={handleSelectExplorerView}>
           {/* Why: keep both query rows mounted and cross-fade so the Names/Contents
              switch does not remount or shift when changing modes. */}
@@ -729,7 +875,7 @@ function FileExplorerFiles(): React.JSX.Element {
               explorerView !== 'files' && 'pointer-events-none invisible',
               isRootDragOver &&
                 explorerView === 'files' &&
-                !(dragSourcePath && dirname(dragSourcePath) === worktreePath) &&
+                !(dragSourcePath && dirname(dragSourcePath) === visibleFilesWorktreePath) &&
                 'bg-border',
               isNativeDragOver && explorerView === 'files' && !nativeDropTargetDir && 'bg-border'
             )}
@@ -738,6 +884,15 @@ function FileExplorerFiles(): React.JSX.Element {
             viewportClassName="h-full min-h-0 py-2"
             data-native-file-drop-target={isFilesViewActive ? 'file-explorer' : undefined}
             data-native-file-drop-dir={visibleFilesWorktreePath ?? undefined}
+            data-native-file-drop-workspace-id={
+              isFilesViewActive ? (activeWorktreeId ?? undefined) : undefined
+            }
+            data-native-file-drop-workspace-root-path={
+              isFilesViewActive ? (worktreePath ?? undefined) : undefined
+            }
+            data-native-file-drop-owner-snapshot={
+              isFilesViewActive ? (nativeFileDropOwnerSnapshot ?? undefined) : undefined
+            }
             onWheelCapture={handleWheelCapture}
             onDragOver={rootDragHandlers.onDragOver}
             onDragEnter={rootDragHandlers.onDragEnter}
@@ -772,18 +927,20 @@ function FileExplorerFiles(): React.JSX.Element {
                 statusByRelativePath={statusByRelativePath}
                 ignoredByRelativePath={ignoredByRelativePath}
                 expanded={rowExpandedPaths}
-                canCollapseFolderSubtree={!hasNameFilter}
+                canCollapseFolderSubtree={!hasNameFilter && !remoteFileBrowserEnabled}
+                canFindInFolder={canFindInFolder}
                 dirCache={dirCache}
                 selectedPaths={selectedPaths}
                 activeFileId={activeFileId}
                 flashingPath={flashingPath}
                 deleteShortcutLabel={deleteShortcutLabel}
-                connectionId={activeRepo?.connectionId ?? null}
+                connectionId={connectionId}
                 runtimeDownloadContext={runtimeDownloadContext}
                 supportsFolderDownload={supportsFolderDownload}
+                nameDoubleClickAction={remoteFileBrowserEnabled ? 'activate' : 'rename'}
                 canOpenInOrcaBrowser={canOpenWorkspaceFileBrowserForPath}
                 onClick={handleRowClick}
-                onDoubleClick={handleDoubleClick}
+                onDoubleClick={handleRowDoubleClick}
                 onViewFile={handleClick}
                 onContextMenuSelect={preserveSelectionForContextMenu}
                 onCopyPaths={copyPathsForNode}
@@ -799,10 +956,20 @@ function FileExplorerFiles(): React.JSX.Element {
                 onMoveDrop={handleMoveDrop}
                 onDragTargetChange={setDropTargetDir}
                 onDragSourceChange={setDragSourcePath}
-                onDragExpandDir={hasNameFilter ? handleExpandNameFilterDir : handleDragExpandDir}
+                onDragExpandDir={
+                  remoteFileBrowserEnabled
+                    ? ignoreRemoteDirectoryExpansion
+                    : hasNameFilter
+                      ? handleExpandNameFilterDir
+                      : handleDragExpandDir
+                }
                 onNativeDragTargetChange={setNativeDropTargetDir}
                 onNativeDragExpandDir={
-                  hasNameFilter ? handleExpandNameFilterDir : handleNativeDragExpandDir
+                  remoteFileBrowserEnabled
+                    ? ignoreRemoteDirectoryExpansion
+                    : hasNameFilter
+                      ? handleExpandNameFilterDir
+                      : handleNativeDragExpandDir
                 }
                 dropTargetDir={dropTargetDir}
                 dragSourcePath={dragSourcePath}
@@ -834,7 +1001,7 @@ function FileExplorerFiles(): React.JSX.Element {
         open={bgMenuOpen}
         onOpenChange={setBgMenuOpen}
         point={bgMenuPoint}
-        worktreePath={worktreePath}
+        worktreePath={visibleFilesWorktreePath ?? worktreePath}
         onStartNew={startNew}
       />
     </>

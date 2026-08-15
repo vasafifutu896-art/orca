@@ -9,6 +9,7 @@ import {
   getFileExplorerOwnerUnresolvedMessage,
   getFileExplorerOperationRoute
 } from './file-explorer-operation-owner'
+import { relativePathInsideRoot } from '../../../../shared/cross-platform-path'
 
 export type FileExplorerDirectoryListing = {
   entries: DirEntry[]
@@ -24,12 +25,14 @@ export function fileExplorerEntriesToTreeNodes(
 ): TreeNode[] {
   return entries.filter(shouldIncludeFileExplorerEntry).map((entry) => {
     const path = joinPath(dirPath, entry.name)
+    const relativePath = worktreePath ? relativePathInsideRoot(worktreePath, path) : null
     return {
       name: entry.name,
       path,
-      relativePath: worktreePath
-        ? normalizeRelativePath(path.slice(worktreePath.length + 1))
-        : entry.name,
+      // Why: direct SSH browsing can move above Home like MobaXterm. Keep a
+      // workspace-relative key inside Home, but use the absolute remote path
+      // outside it instead of fabricating a sliced prefix.
+      relativePath: relativePath === null ? path : normalizeRelativePath(relativePath),
       isDirectory: entry.isDirectory,
       isSymlink: entry.isSymlink,
       depth: depth + 1,

@@ -5,7 +5,8 @@ import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import {
   captureFileExplorerOperationGuard,
-  getFileExplorerOperationOwner
+  getFileExplorerOperationOwner,
+  getFileExplorerOperationSnapshotFromState
 } from './file-explorer-operation-owner'
 
 const initialState = useAppStore.getInitialState()
@@ -50,6 +51,7 @@ describe('file explorer operation generations', () => {
     })
     const owner = getFileExplorerOperationOwner(worktreeId)
     const guard = captureFileExplorerOperationGuard(worktreeId, owner)
+    const ownerSnapshot = guard.ownerSnapshot
 
     useAppStore.getState().setEnvironmentSshConnectionState('hub-a', 'private-target', {
       targetId: 'private-target',
@@ -60,6 +62,9 @@ describe('file explorer operation generations', () => {
     })
 
     expect(() => guard.assertCurrent()).toThrow("Couldn't determine which host owns")
+    expect(getFileExplorerOperationSnapshotFromState(useAppStore.getState(), worktreeId)).not.toBe(
+      ownerSnapshot
+    )
   })
 
   it('invalidates a direct SSH mutation when that target reconnects', () => {
@@ -76,6 +81,7 @@ describe('file explorer operation generations', () => {
     })
     const owner = getFileExplorerOperationOwner(worktreeId)
     const guard = captureFileExplorerOperationGuard(worktreeId, owner)
+    const ownerSnapshot = guard.ownerSnapshot
 
     useAppStore.getState().setSshConnectionState('client-target', {
       targetId: 'client-target',
@@ -86,6 +92,9 @@ describe('file explorer operation generations', () => {
     })
 
     expect(() => guard.assertCurrent()).toThrow("Couldn't determine which host owns")
+    expect(getFileExplorerOperationSnapshotFromState(useAppStore.getState(), worktreeId)).not.toBe(
+      ownerSnapshot
+    )
   })
 
   it('invalidates a folder-workspace mutation when its SSH target reconnects', () => {
@@ -166,11 +175,15 @@ describe('file explorer operation generations', () => {
       .setRuntimeEnvironments([{ id: 'hub-a', createdAt: 1, pairingRevision: 1 } as never])
     const owner = getFileExplorerOperationOwner(worktreeId)
     const guard = captureFileExplorerOperationGuard(worktreeId, owner)
+    const ownerSnapshot = guard.ownerSnapshot
 
     useAppStore
       .getState()
       .setRuntimeEnvironments([{ id: 'hub-a', createdAt: 1, pairingRevision: 2 } as never])
 
     expect(() => guard.assertCurrent()).toThrow("Couldn't determine which host owns")
+    expect(getFileExplorerOperationSnapshotFromState(useAppStore.getState(), worktreeId)).not.toBe(
+      ownerSnapshot
+    )
   })
 })

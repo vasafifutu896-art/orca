@@ -17,7 +17,13 @@ export type NativeDropResolution =
   | { target: typeof NATIVE_FILE_DROP_TARGET.editor }
   | { target: typeof NATIVE_FILE_DROP_TARGET.terminal; tabId?: string; paneLeafId?: string }
   | { target: typeof NATIVE_FILE_DROP_TARGET.composer }
-  | { target: typeof NATIVE_FILE_DROP_TARGET.fileExplorer; destinationDir: string }
+  | {
+      target: typeof NATIVE_FILE_DROP_TARGET.fileExplorer
+      destinationDir: string
+      workspaceId: string
+      workspaceRootPath: string
+      ownerSnapshot: string
+    }
   | { target: typeof NATIVE_FILE_DROP_TARGET.projectSidebar }
   | { target: 'rejected' }
 
@@ -34,6 +40,9 @@ export type NativeFileDropPayload =
       paths: string[]
       target: typeof NATIVE_FILE_DROP_TARGET.fileExplorer
       destinationDir: string
+      workspaceId: string
+      workspaceRootPath: string
+      ownerSnapshot: string
     }
   | { paths: string[]; target: typeof NATIVE_FILE_DROP_TARGET.projectSidebar }
   | NativeFileDropRejectedPayload
@@ -48,6 +57,9 @@ export type NativeFileDropRejectedPayload = {
 export type NativeFileDropPathEntry = {
   nativeFileDropTarget?: string
   nativeFileDropDir?: string
+  nativeFileDropWorkspaceId?: string
+  nativeFileDropWorkspaceRootPath?: string
+  nativeFileDropOwnerSnapshot?: string
   terminalTabId?: string
   terminalPaneLeafId?: string
 }
@@ -101,6 +113,9 @@ export function resolveNativeFileDropPath(
 ): NativeDropResolution | null {
   let foundExplorer = false
   let destinationDir: string | undefined
+  let workspaceId: string | undefined
+  let workspaceRootPath: string | undefined
+  let ownerSnapshot: string | undefined
   let terminalPaneLeafId: string | undefined
 
   for (const entry of path) {
@@ -123,13 +138,22 @@ export function resolveNativeFileDropPath(
     if (destinationDir === undefined && entry.nativeFileDropDir) {
       destinationDir = entry.nativeFileDropDir
     }
+    workspaceId ??= entry.nativeFileDropWorkspaceId
+    workspaceRootPath ??= entry.nativeFileDropWorkspaceRootPath
+    ownerSnapshot ??= entry.nativeFileDropOwnerSnapshot
   }
 
   if (foundExplorer) {
-    if (!destinationDir) {
+    if (!destinationDir || !workspaceId || !workspaceRootPath || !ownerSnapshot) {
       return { target: 'rejected' }
     }
-    return { target: NATIVE_FILE_DROP_TARGET.fileExplorer, destinationDir }
+    return {
+      target: NATIVE_FILE_DROP_TARGET.fileExplorer,
+      destinationDir,
+      workspaceId,
+      workspaceRootPath,
+      ownerSnapshot
+    }
   }
 
   return null
@@ -201,7 +225,10 @@ export function createNativeFileDropPayload(
     return {
       paths: [...paths],
       target: NATIVE_FILE_DROP_TARGET.fileExplorer,
-      destinationDir: resolution.destinationDir
+      destinationDir: resolution.destinationDir,
+      workspaceId: resolution.workspaceId,
+      workspaceRootPath: resolution.workspaceRootPath,
+      ownerSnapshot: resolution.ownerSnapshot
     }
   }
 
@@ -250,7 +277,15 @@ export function isNativeFileDropPayload(value: unknown): value is NativeFileDrop
     )
   }
   if (target === NATIVE_FILE_DROP_TARGET.fileExplorer) {
-    return typeof payload.destinationDir === 'string'
+    return (
+      typeof payload.destinationDir === 'string' &&
+      typeof payload.workspaceId === 'string' &&
+      payload.workspaceId.length > 0 &&
+      typeof payload.workspaceRootPath === 'string' &&
+      payload.workspaceRootPath.length > 0 &&
+      typeof payload.ownerSnapshot === 'string' &&
+      payload.ownerSnapshot.length > 0
+    )
   }
 
   return (

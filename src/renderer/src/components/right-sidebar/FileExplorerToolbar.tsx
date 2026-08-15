@@ -23,6 +23,7 @@ type FileExplorerToolbarProps = {
     handleRefresh: () => void
   }
   canRefresh: boolean
+  showTreeActions?: boolean
   canCollapseAll: boolean
   onCollapseAll: () => void
   showGitIgnoredFilesToggle: boolean
@@ -38,6 +39,7 @@ export function FileExplorerToolbar({
   connectionId,
   refresh,
   canRefresh,
+  showTreeActions = true,
   canCollapseAll,
   onCollapseAll,
   showGitIgnoredFilesToggle,
@@ -54,78 +56,82 @@ export function FileExplorerToolbar({
       >
         {repoName}
       </span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className={cn(
-              'text-muted-foreground hover:text-foreground',
-              !canCollapseAll && 'cursor-not-allowed opacity-50'
-            )}
-            aria-label={translate(
+      {showTreeActions ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={cn(
+                'text-muted-foreground hover:text-foreground',
+                !canCollapseAll && 'cursor-not-allowed opacity-50'
+              )}
+              aria-label={translate(
+                'auto.components.right.sidebar.FileExplorerToolbar.6026b16950',
+                'Collapse All'
+              )}
+              aria-disabled={!canCollapseAll}
+              // Why: native disabled buttons suppress Radix tooltip triggers in Chromium.
+              onClick={(event) => {
+                if (!canCollapseAll) {
+                  event.preventDefault()
+                  return
+                }
+                onCollapseAll()
+              }}
+            >
+              <ListCollapse className="size-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            {translate(
               'auto.components.right.sidebar.FileExplorerToolbar.6026b16950',
               'Collapse All'
             )}
-            aria-disabled={!canCollapseAll}
-            // Why: native disabled buttons suppress Radix tooltip triggers in Chromium.
-            onClick={(event) => {
-              if (!canCollapseAll) {
-                event.preventDefault()
-                return
-              }
-              onCollapseAll()
-            }}
-          >
-            <ListCollapse className="size-3" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={4}>
-          {translate(
-            'auto.components.right.sidebar.FileExplorerToolbar.6026b16950',
-            'Collapse All'
-          )}
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className={cn(
-              'text-muted-foreground hover:text-foreground',
-              !canRefresh && 'cursor-not-allowed opacity-50'
-            )}
-            aria-label={translate(
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      {showTreeActions ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={cn(
+                'text-muted-foreground hover:text-foreground',
+                !canRefresh && 'cursor-not-allowed opacity-50'
+              )}
+              aria-label={translate(
+                'auto.components.right.sidebar.FileExplorerToolbar.d95e30fe28',
+                'Refresh Explorer'
+              )}
+              aria-disabled={!canRefresh || refresh.isRefreshing}
+              disabled={refresh.isRefreshing}
+              onClick={(event) => {
+                if (!canRefresh) {
+                  event.preventDefault()
+                  return
+                }
+                refresh.handleRefresh()
+              }}
+            >
+              {refresh.showRefreshSpinner ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            {translate(
               'auto.components.right.sidebar.FileExplorerToolbar.d95e30fe28',
               'Refresh Explorer'
             )}
-            aria-disabled={!canRefresh || refresh.isRefreshing}
-            disabled={refresh.isRefreshing}
-            onClick={(event) => {
-              if (!canRefresh) {
-                event.preventDefault()
-                return
-              }
-              refresh.handleRefresh()
-            }}
-          >
-            {refresh.showRefreshSpinner ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3" />
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={4}>
-          {translate(
-            'auto.components.right.sidebar.FileExplorerToolbar.d95e30fe28',
-            'Refresh Explorer'
-          )}
-        </TooltipContent>
-      </Tooltip>
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>

@@ -3,6 +3,7 @@ import { normalize, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const {
+  fromWebContentsMock,
   getSpawnArgsForWindowsMock,
   handleMock,
   openPathMock,
@@ -12,6 +13,7 @@ const {
   spawnMock,
   statMock
 } = vi.hoisted(() => ({
+  fromWebContentsMock: vi.fn(),
   getSpawnArgsForWindowsMock: vi.fn(),
   handleMock: vi.fn(),
   openPathMock: vi.fn(),
@@ -23,6 +25,9 @@ const {
 }))
 
 vi.mock('electron', () => ({
+  BrowserWindow: {
+    fromWebContents: fromWebContentsMock
+  },
   ipcMain: {
     handle: handleMock
   },
@@ -101,6 +106,7 @@ describe('registerShellHandlers', () => {
   }
 
   beforeEach(() => {
+    fromWebContentsMock.mockReset().mockReturnValue(null)
     handleMock.mockReset()
     getSpawnArgsForWindowsMock.mockReset()
     openPathMock.mockReset()
@@ -168,6 +174,44 @@ describe('registerShellHandlers', () => {
       defaultPath: '/Users/kaylee',
       properties: ['openDirectory']
     })
+  })
+
+  it('picks multiple upload files in one native dialog', async () => {
+    showOpenDialogMock.mockResolvedValue({
+      canceled: false,
+      filePaths: ['/Users/kaylee/a.txt', '/Users/kaylee/b.txt']
+    })
+
+    const handler = getHandler('shell:pickFiles')
+    await expect(handler({})).resolves.toEqual(['/Users/kaylee/a.txt', '/Users/kaylee/b.txt'])
+    expect(showOpenDialogMock).toHaveBeenCalledWith({
+      properties: ['openFile', 'multiSelections']
+    })
+  })
+
+  it('parents the upload picker to the invoking Orca window', async () => {
+    const ownerWindow = { id: 7 }
+    const sender = { id: 11 }
+    fromWebContentsMock.mockReturnValueOnce(ownerWindow)
+    showOpenDialogMock.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['/Users/kaylee/a.txt']
+    })
+
+    const handler = getHandler('shell:pickFiles')
+    await expect(handler({ sender })).resolves.toEqual(['/Users/kaylee/a.txt'])
+
+    expect(fromWebContentsMock).toHaveBeenCalledWith(sender)
+    expect(showOpenDialogMock).toHaveBeenCalledWith(ownerWindow, {
+      properties: ['openFile', 'multiSelections']
+    })
+  })
+
+  it('returns an empty upload batch when file picking is canceled', async () => {
+    showOpenDialogMock.mockResolvedValue({ canceled: true, filePaths: [] })
+
+    const handler = getHandler('shell:pickFiles')
+    await expect(handler({})).resolves.toEqual([])
   })
 
   describe('shell:openPath', () => {

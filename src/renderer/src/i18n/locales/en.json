@@ -10883,7 +10883,8 @@
             "3161c4e425": "folder",
             "e887fa4b2e": "Open in Terminal",
             "1d8e182c32": "View File",
-            "clipboardStagingUnavailable": "Could not copy the file because Orca's temporary storage is unavailable"
+            "clipboardStagingUnavailable": "Could not copy the file because Orca's temporary storage is unavailable",
+            "renameShortcutF2": "F2"
           },
           "FileExplorerToolbar": {
             "d238264654": "Show Git Ignored Files",
@@ -11828,7 +11829,17 @@
           },
           "useFileExplorerImport": {
             "25919b2050": "Skipped {{value0}} {{value1}}.",
-            "132fd0e1e9": "Failed to import {{value0}} {{value1}}."
+            "132fd0e1e9": "Failed to import {{value0}} {{value1}}.",
+            "uploadedItems": "Uploaded {{count}} item(s).",
+            "uploadFailedOne": "Failed to upload 1 item.",
+            "uploadFailedMany": "Failed to upload {{count}} items.",
+            "uploadSkippedOne": "Skipped 1 item.",
+            "uploadSkippedMany": "Skipped {{count}} items.",
+            "workspaceChanged": "The active workspace changed while selecting files.",
+            "connectionChanged": "The connection changed during the upload. Check the destination before trying again.",
+            "uploadAlreadyInProgress": "An upload is already in progress. Try again when it finishes.",
+            "uploadFailed": "Failed to upload files.",
+            "importFailed": "Failed to import files."
           },
           "useFileExplorerKeys": {
             "8adb953095": "Operation failed"
@@ -12184,6 +12195,24 @@
             "90cabf6cfc": "Stack this PR above #{{value0}}",
             "ff81473a57": "Creates a GitHub Stack or extends the parent's existing stack.",
             "29732f2fb0": "new PR"
+          },
+          "RemoteFileToolbar": {
+            "remoteFileControls": "Remote file controls",
+            "remoteFileActions": "Remote file actions",
+            "parentFolder": "Parent folder",
+            "homeFolder": "Home folder",
+            "refresh": "Refresh",
+            "uploadFiles": "Upload files",
+            "uploadFolder": "Upload folder",
+            "downloadSelected": "Download selected",
+            "remoteLocation": "Remote location",
+            "remotePath": "Remote path",
+            "goToPath": "Go to path",
+            "operationInProgress": "Remote file operation in progress"
+          },
+          "useRemoteFileBrowser": {
+            "notFolder": "The remote path is not a folder.",
+            "openFailed": "Could not open the remote folder."
           }
         }
       },

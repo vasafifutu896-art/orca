@@ -15,8 +15,10 @@ import {
   copyFileToOsClipboard,
   downloadRemoteFile,
   FileExplorerRow,
+  handleFileExplorerNameDoubleClick,
   shouldShowCollapseFolderAction,
   shouldShowFindInFolderAction,
+  shouldShowLocalRevealAction,
   shouldShowCopyFileAction,
   shouldShowOpenInTerminalAction,
   shouldShowRemoteDownloadAction,
@@ -352,6 +354,12 @@ describe('FileExplorerToolbar', () => {
     expect(label.props.className).toContain('min-w-0')
   })
 
+  it('keeps only the overflow menu when the remote toolbar owns tree actions', () => {
+    const element = makeToolbar({ showTreeActions: false })
+
+    expect(getToolbarButtonLabels(element)).toEqual(['More Explorer Actions'])
+  })
+
   it('disables the refresh button and shows a spinner while refreshing', () => {
     const element = makeToolbar({
       refresh: makeRefreshState({ isRefreshing: true, showRefreshSpinner: true })
@@ -572,8 +580,24 @@ describe('FileExplorerRow collapse folder action', () => {
     ).toBe(false)
   })
 
+  it('opens a remote folder name on double-click instead of renaming it', () => {
+    const onActivate = vi.fn()
+    const onRename = vi.fn()
+
+    handleFileExplorerNameDoubleClick({
+      action: 'activate',
+      node: directoryNode,
+      onActivate,
+      onRename
+    })
+
+    expect(onActivate).toHaveBeenCalledOnce()
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
   it('only shows find in folder for directories', () => {
     expect(shouldShowFindInFolderAction(directoryNode)).toBe(true)
+    expect(shouldShowFindInFolderAction(directoryNode, false)).toBe(false)
     expect(
       shouldShowFindInFolderAction({
         ...directoryNode,
@@ -593,6 +617,11 @@ describe('FileExplorerRow collapse folder action', () => {
   it('only shows view file for files', () => {
     expect(shouldShowViewFileAction(fileNode)).toBe(true)
     expect(shouldShowViewFileAction(directoryNode)).toBe(false)
+  })
+
+  it('hides local file-manager reveal actions for SSH rows', () => {
+    expect(shouldShowLocalRevealAction('ssh-1')).toBe(false)
+    expect(shouldShowLocalRevealAction(null)).toBe(true)
   })
 
   it('shows remote download only for desktop SSH rows and file-like Remote Host rows', () => {
@@ -1002,6 +1031,57 @@ describe('FileExplorerRow collapse folder action', () => {
     const row = findFileExplorerRow(element)
 
     expect(row.props.connectionId).toBe('ssh-1')
+  })
+
+  it('passes file-manager name activation semantics to remote rows', () => {
+    const element = FileExplorerVirtualRows({
+      virtualizer: {
+        getTotalSize: () => 26,
+        getVirtualItems: () => [{ index: 0, key: 'src', start: 0 }],
+        measureElement: vi.fn()
+      } as never,
+      inlineInputIndex: -1,
+      rowProjection: createFileExplorerRowProjection([directoryNode]),
+      inlineInput: null,
+      handleInlineSubmit: vi.fn(),
+      dismissInlineInput: vi.fn(),
+      folderStatusByRelativePath: new Map(),
+      statusByRelativePath: new Map(),
+      ignoredByRelativePath: new Set(),
+      expanded: new Set(),
+      dirCache: {},
+      selectedPaths: new Set(),
+      activeFileId: null,
+      flashingPath: null,
+      deleteShortcutLabel: 'Del',
+      nameDoubleClickAction: 'activate',
+      onClick: vi.fn(),
+      onDoubleClick: vi.fn(),
+      onViewFile: vi.fn(),
+      onContextMenuSelect: vi.fn(),
+      onCopyPaths: vi.fn(),
+      onStartNew: vi.fn(),
+      onStartRename: vi.fn(),
+      onDuplicate: vi.fn(),
+      onAddFolderAsProject: vi.fn(),
+      canAddFolderAsProject: () => false,
+      onOpenInTerminal: vi.fn(),
+      onRequestDelete: vi.fn(),
+      onCollapseFolderSubtree: vi.fn(),
+      onFindInFolder: vi.fn(),
+      onMoveDrop: vi.fn(),
+      onDragTargetChange: vi.fn(),
+      onDragSourceChange: vi.fn(),
+      onDragExpandDir: vi.fn(),
+      onNativeDragTargetChange: vi.fn(),
+      onNativeDragExpandDir: vi.fn(),
+      dropTargetDir: null,
+      dragSourcePath: null,
+      nativeDropTargetDir: null
+    })
+
+    const row = findFileExplorerRow(element)
+    expect(row.props.nameDoubleClickAction).toBe('activate')
   })
 
   it('passes the row node to the open in terminal handler', () => {

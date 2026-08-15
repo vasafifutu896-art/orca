@@ -40,6 +40,7 @@ export function useFileExplorerKeys(opts: {
   rowProjection: FileExplorerRowProjection
   expandedPaths: Set<string>
   canToggleDirectories: boolean
+  enterActivatesNode?: boolean
   inlineInput: InlineInput | null
   selectedPaths: Set<string>
   selectedNode: TreeNode | null
@@ -87,6 +88,7 @@ export function useFileExplorerKeys(opts: {
   activeWorktreeIdRef.current = opts.activeWorktreeId
 
   useEffect(() => {
+    const enterActivatesNode = opts.enterActivatesNode ?? false
     // Find the row index whose button is currently focused. Each virtualized
     // row's wrapper carries data-index; the inline-rename slot is the only
     // wrapper without a real TreeNode, so it falls back to the row above.
@@ -223,6 +225,15 @@ export function useFileExplorerKeys(opts: {
         if (node) {
           if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
             e.preventDefault()
+            if (enterActivatesNode) {
+              activateNodeRef.current(node)
+            } else {
+              startRenameRef.current(node)
+            }
+            return
+          }
+          if (e.key === 'F2' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+            e.preventDefault()
             startRenameRef.current(node)
             return
           }
@@ -290,5 +301,12 @@ export function useFileExplorerKeys(opts: {
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
-  }, [keybindings, rightSidebarExplorerView, rightSidebarOpen, rightSidebarTab, opts.containerRef])
+  }, [
+    keybindings,
+    rightSidebarExplorerView,
+    rightSidebarOpen,
+    rightSidebarTab,
+    opts.containerRef,
+    opts.enterActivatesNode
+  ])
 }

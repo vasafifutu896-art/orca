@@ -21,6 +21,7 @@ type FileExplorerVirtualRowsProps = {
   ignoredByRelativePath: Set<string>
   expanded: Set<string>
   canCollapseFolderSubtree?: boolean
+  canFindInFolder?: (node: TreeNode) => boolean
   dirCache: Record<string, DirCache>
   selectedPaths: Set<string>
   activeFileId: string | null
@@ -32,6 +33,7 @@ type FileExplorerVirtualRowsProps = {
   canOpenInOrcaBrowser?: (filePath: string) => boolean
   onClick: (node: TreeNode, event: React.MouseEvent<HTMLButtonElement>) => void
   onDoubleClick: (node: TreeNode) => void
+  nameDoubleClickAction?: 'rename' | 'activate'
   onViewFile: (node: TreeNode) => void
   onContextMenuSelect: (node: TreeNode) => void
   onCopyPaths: (node: TreeNode, pathKind: 'absolute' | 'relative') => void
@@ -68,6 +70,7 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
     ignoredByRelativePath,
     expanded,
     canCollapseFolderSubtree = true,
+    canFindInFolder = () => true,
     dirCache,
     selectedPaths,
     activeFileId,
@@ -79,6 +82,7 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
     canOpenInOrcaBrowser = () => false,
     onClick,
     onDoubleClick,
+    nameDoubleClickAction = 'rename',
     onViewFile,
     onContextMenuSelect,
     onCopyPaths,
@@ -183,11 +187,13 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
               supportsFolderDownload={supportsFolderDownload}
               canOpenInOrcaBrowser={canOpenInOrcaBrowser(n.path)}
               canCollapseFolderSubtree={canCollapseFolderSubtree}
+              canFindInFolder={canFindInFolder(n)}
               targetDir={n.isDirectory ? n.path : dirname(n.path)}
               targetDepth={n.isDirectory ? n.depth + 1 : n.depth}
               selectionSize={selectedPaths.has(n.path) ? visibleSelectionCount : 1}
               onClick={(event) => onClick(n, event)}
               onDoubleClick={() => onDoubleClick(n)}
+              nameDoubleClickAction={nameDoubleClickAction}
               onViewFile={() => onViewFile(n)}
               onContextMenuSelect={() => onContextMenuSelect(n)}
               onCopyPaths={(pathKind) => onCopyPaths(n, pathKind)}
