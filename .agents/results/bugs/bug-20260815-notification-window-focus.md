@@ -64,6 +64,8 @@ restoration, and sidebar reveal remain intact.
 - Keep the route alive when Electron's in-memory click callback fires because Windows also invokes
   COM activation in an undefined order. The live callback activates the owner directly; the COM
   callback consumes the route after performing the foreground-permission handoff when needed.
+- Queue live-click navigation across renderer reloads and retain a completed live route for only a
+  bounded grace period when no COM callback arrives.
 - Treat stale toasts whose owner process has exited as no-ops so a reused instance slot cannot
   open an unrelated session.
 - Focus the owner window immediately even during renderer reload, but queue worktree/pane
@@ -100,7 +102,7 @@ restoration, and sidebar reveal remain intact.
   activation arguments and a click handler, relays to the owning process, activates through the
   generic workspace path, and focuses the exact terminal leaf.
 
-The portable-release boundary now passes 287 targeted tests, with four Windows-only native/pipe
+The portable-release boundary now passes 290 targeted tests, with four Windows-only native/pipe
 checks skipped on Linux. Node and renderer typechecks, formatting, and relevant lint checks also
 pass. The Windows workflow compiles and loads the N-API addon in both Node and Electron and runs
 the real named-pipe checks.

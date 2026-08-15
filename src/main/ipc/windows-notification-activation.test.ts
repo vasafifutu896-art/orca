@@ -252,9 +252,10 @@ describe('createWindowsNotificationActivationRouter', () => {
     })
   })
 
-  it('keeps failed activation pending and retries it only during flush', async () => {
+  it('keeps pending navigation while COM retries focus and consumes it after flush', async () => {
     const activateTarget = vi
       .fn()
+      .mockReturnValueOnce('navigation-pending')
       .mockReturnValueOnce('navigation-pending')
       .mockReturnValueOnce(true)
     const harness = listenerHarness()
@@ -265,15 +266,64 @@ describe('createWindowsNotificationActivationRouter', () => {
     })
     const registration = router.registerTarget({ worktreeId: 'repo::/worktree' })
 
-    expect(registration.activate()).toBe('pending')
+    expect(registration.activateLive()).toBe('pending')
     await expect(router.handleActivationArguments(registration.activationArguments)).resolves.toBe(
       'pending'
     )
-    expect(activateTarget).toHaveBeenCalledTimes(1)
+    expect(activateTarget).toHaveBeenCalledTimes(2)
 
     router.flush()
-    expect(activateTarget).toHaveBeenCalledTimes(2)
+    expect(activateTarget).toHaveBeenCalledTimes(3)
     expect(registration.activate()).toBe('missing')
+  })
+
+  it('retains a live-first route for COM and ignores a late live callback', () => {
+    const activateTarget = vi.fn(() => true)
+    const router = createWindowsNotificationActivationRouter({
+      activateTarget,
+      startListener: listenerHarness().startListener,
+      token: tokenSequence(OWNER, ROUTE_ONE, ROUTE_TWO)
+    })
+    const liveFirst = router.registerTarget({ worktreeId: 'repo::live-first' })
+    const comFirst = router.registerTarget({ worktreeId: 'repo::com-first' })
+
+    expect(liveFirst.activateLive()).toBe('activated')
+    expect(liveFirst.activate()).toBe('activated')
+    expect(comFirst.activate()).toBe('activated')
+    expect(comFirst.activateLive()).toBe('missing')
+    expect(activateTarget).toHaveBeenCalledTimes(3)
+  })
+
+  it('expires a live-only route after the bounded COM grace period', () => {
+    let now = 100
+    const router = createWindowsNotificationActivationRouter({
+      activateTarget: () => true,
+      startListener: listenerHarness().startListener,
+      token: tokenSequence(OWNER, ROUTE_ONE),
+      now: () => now
+    })
+    const registration = router.registerTarget({ worktreeId: 'repo::live-only' })
+
+    expect(registration.activateLive()).toBe('activated')
+    now += 60_000
+    expect(registration.activate()).toBe('missing')
+  })
+
+  it('contains a live activation throw without consuming its COM route', () => {
+    const warn = vi.fn()
+    const router = createWindowsNotificationActivationRouter({
+      activateTarget: () => {
+        throw new Error('window closed during click')
+      },
+      startListener: listenerHarness().startListener,
+      token: tokenSequence(OWNER, ROUTE_ONE),
+      warn
+    })
+    const registration = router.registerTarget({ worktreeId: 'repo::window-race' })
+
+    expect(registration.activateLive()).toBe('unavailable')
+    expect(registration.activate()).toBe('unavailable')
+    expect(warn).toHaveBeenCalledTimes(2)
   })
 
   it('flushes queued navigation in click order rather than notification creation order', () => {

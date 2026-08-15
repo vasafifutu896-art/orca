@@ -646,25 +646,16 @@ describe('registerNotificationHandlers', () => {
       const routeId = '22222222-2222-4222-8222-222222222222'
       const ownerId = '11111111-1111-4111-8111-111111111111'
       const activate = vi.fn(() => 'activated')
+      const activateLive = vi.fn(() => 'activated')
       const discard = vi.fn()
       const registerTarget = vi.fn(() => ({
         routeId,
         activationArguments: `type=click&tag=${routeId}&orcaOwner=${ownerId}&orcaRoute=${routeId}`,
         activate,
+        activateLive,
         discard
       }))
       const router = { ready: Promise.resolve(), registerTarget }
-      const webContentsSend = vi.fn()
-      getTrustedUIRendererWindowMock.mockReturnValue({
-        isDestroyed: () => false,
-        isMinimized: () => false,
-        isAlwaysOnTop: () => true,
-        show: vi.fn(),
-        focus: vi.fn(),
-        moveTop: vi.fn(),
-        setAlwaysOnTop: vi.fn(),
-        webContents: { send: webContentsSend }
-      })
       registerNotificationHandlers(
         {
           getSettings: () => ({
@@ -704,10 +695,8 @@ describe('registerNotificationHandlers', () => {
 
       getNotificationEventHandler('click')()
       expect(activate).not.toHaveBeenCalled()
-      expect(getTrustedUIRendererWindowMock).toHaveBeenCalledTimes(1)
-      expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorkspace', {
-        workspaceId: 'repo::C:\\work\\한국어'
-      })
+      expect(activateLive).toHaveBeenCalledTimes(1)
+      expect(getTrustedUIRendererWindowMock).not.toHaveBeenCalled()
       expect(discard).not.toHaveBeenCalled()
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
@@ -721,6 +710,7 @@ describe('registerNotificationHandlers', () => {
       const routeId = '22222222-2222-4222-8222-222222222222'
       const ownerId = '11111111-1111-4111-8111-111111111111'
       const activate = vi.fn(() => 'activated')
+      const activateLive = vi.fn(() => 'activated')
       let resolveReady = (_available: boolean): void => {}
       const ready = new Promise<boolean>((resolve) => {
         resolveReady = resolve
@@ -729,19 +719,9 @@ describe('registerNotificationHandlers', () => {
         routeId,
         activationArguments: `type=click&tag=${routeId}&orcaOwner=${ownerId}&orcaRoute=${routeId}`,
         activate,
+        activateLive,
         discard: vi.fn()
       }))
-      const webContentsSend = vi.fn()
-      getTrustedUIRendererWindowMock.mockReturnValue({
-        isDestroyed: () => false,
-        isMinimized: () => false,
-        isAlwaysOnTop: () => true,
-        show: vi.fn(),
-        focus: vi.fn(),
-        moveTop: vi.fn(),
-        setAlwaysOnTop: vi.fn(),
-        webContents: { send: webContentsSend }
-      })
       registerNotificationHandlers(
         {
           getSettings: () => ({
@@ -775,7 +755,7 @@ describe('registerNotificationHandlers', () => {
       )
       getNotificationEventHandler('click')()
       expect(activate).not.toHaveBeenCalled()
-      expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorkspace', { workspaceId })
+      expect(activateLive).toHaveBeenCalledTimes(1)
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
     }

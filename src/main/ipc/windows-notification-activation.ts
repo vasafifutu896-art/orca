@@ -16,6 +16,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const MAX_ACTIVATION_ARGUMENT_BYTES = 512
 const DEFAULT_MAX_ROUTES = 256
 const DEFAULT_ROUTE_TTL_MS = 24 * 60 * 60 * 1_000
+const LIVE_ROUTE_GRACE_MS = 60_000
 const MAX_WORKTREE_ID_BYTES = 32 * 1_024
 const MAX_PANE_KEY_BYTES = 1_024
 // oxlint-disable-next-line no-control-regex -- XML 1.0 explicitly permits tab, LF, and CR while rejecting other controls.
@@ -45,6 +46,7 @@ type RouteRecord = {
   expiresAt: number
   pending: boolean
   pendingSequence?: number
+  consumeWhenActivated: boolean
 }
 
 function isUuid(value: unknown): value is string {
@@ -153,30 +155,38 @@ export function createWindowsNotificationActivationRouter(
       record.expiresAt <= currentTime ? routes.delete(routeId) : undefined
     )
   }
-  const activateRoute = (routeId: string) => {
+  const activateRoute = (routeId: string, retainForCom = false) => {
     prune()
     const record = routes.get(routeId)
-    if (!record || record.pending) {
-      return record ? ('pending' as const) : ('missing' as const)
+    if (!record) {
+      return 'missing' as const
     }
+    const wasPending = record.pending
     record.pending = true
+    record.consumeWhenActivated ||= !retainForCom
     try {
       const result = options.activateTarget(record.target)
       if (result === true || result === 'activated') {
-        routes.delete(routeId)
+        record.pending = false
+        record.pendingSequence = undefined
+        if (!retainForCom || record.consumeWhenActivated) {
+          routes.delete(routeId)
+        } else {
+          record.expiresAt = Math.min(record.expiresAt, now() + LIVE_ROUTE_GRACE_MS)
+        }
         return 'activated' as const
       }
       if (result === 'navigation-pending') {
-        activationSequence += 1
-        record.pendingSequence = activationSequence
+        if (!wasPending) {
+          activationSequence += 1
+          record.pendingSequence = activationSequence
+        }
         return 'pending' as const
       }
-      record.pending = false
-      record.pendingSequence = undefined
+      record.pending = wasPending
       return 'unavailable' as const
     } catch (error) {
-      record.pending = false
-      record.pendingSequence = undefined
+      record.pending = wasPending
       warn('[notifications] Failed to activate notification target', error)
       return 'unavailable' as const
     }
@@ -187,8 +197,7 @@ export function createWindowsNotificationActivationRouter(
       ownerId,
       (routeId) => {
         prune()
-        const record = routes.get(routeId)
-        return Boolean(record && !record.pending)
+        return routes.has(routeId)
       },
       (routeId) => {
         const result = activateRoute(routeId)
@@ -219,12 +228,14 @@ export function createWindowsNotificationActivationRouter(
       routes.set(routeId, {
         target: validateTarget(target),
         expiresAt: now() + routeTtlMs,
-        pending: false
+        pending: false,
+        consumeWhenActivated: false
       })
       return {
         routeId,
         activationArguments: buildWindowsNotificationActivationArguments(ownerId, routeId),
         activate: () => activateRoute(routeId),
+        activateLive: () => activateRoute(routeId, true),
         discard: () => void routes.delete(routeId)
       }
     },
@@ -256,9 +267,7 @@ export function createWindowsNotificationActivationRouter(
         .filter(([, record]) => record.pending)
         .sort(([, left], [, right]) => (left.pendingSequence ?? 0) - (right.pendingSequence ?? 0))
       for (const [routeId, record] of pendingRoutes) {
-        record.pending = false
-        record.pendingSequence = undefined
-        activateRoute(routeId)
+        activateRoute(routeId, !record.consumeWhenActivated)
       }
     },
     close: () => {

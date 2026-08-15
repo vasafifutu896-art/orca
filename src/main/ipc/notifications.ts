@@ -566,9 +566,13 @@ export function registerNotificationHandlers(
         if (notificationTarget) {
           clickHandler = () => {
             release()
-            // Why: Windows raises the live event and COM activation in undefined order; keep
-            // the owner route for COM's foreground-permission handoff instead of consuming it here.
-            activateNotificationTarget(notificationTarget)
+            if (activationRoute) {
+              // Why: Windows raises live and COM callbacks in undefined order; navigate now but
+              // retain the route briefly so COM can still transfer foreground permission.
+              activationRoute.activateLive()
+            } else {
+              activateNotificationTarget(notificationTarget)
+            }
           }
           notification.on('click', clickHandler)
         }
