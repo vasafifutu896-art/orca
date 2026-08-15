@@ -61,8 +61,9 @@ restoration, and sidebar reveal remain intact.
   (`SendInput` with a zero-key pair, then `AllowSetForegroundWindow(ownerPid)`). A child EXE or
   PowerShell helper cannot safely substitute because foreground permission belongs to the COM
   callback process.
-- Consume the route once across the notification-object callback, global callback, and pipe
-  callback, then activate the trusted owner window and exact worktree/terminal pane.
+- Keep the route alive when Electron's in-memory click callback fires because Windows also invokes
+  COM activation in an undefined order. The live callback activates the owner directly; the COM
+  callback consumes the route after performing the foreground-permission handoff when needed.
 - Treat stale toasts whose owner process has exited as no-ops so a reused instance slot cannot
   open an unrelated session.
 - Focus the owner window immediately even during renderer reload, but queue worktree/pane

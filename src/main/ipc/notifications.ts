@@ -566,13 +566,9 @@ export function registerNotificationHandlers(
         if (notificationTarget) {
           clickHandler = () => {
             release()
-            // Both Electron's live click and its global COM activation can fire; the
-            // owned Windows route consumes once, while other platforms activate directly.
-            if (activationRoute) {
-              activationRoute.activate()
-            } else {
-              activateNotificationTarget(notificationTarget)
-            }
+            // Why: Windows raises the live event and COM activation in undefined order; keep
+            // the owner route for COM's foreground-permission handoff instead of consuming it here.
+            activateNotificationTarget(notificationTarget)
           }
           notification.on('click', clickHandler)
         }

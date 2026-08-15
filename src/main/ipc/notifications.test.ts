@@ -639,7 +639,7 @@ describe('registerNotificationHandlers', () => {
     }
   })
 
-  it('routes a Windows toast through its owning process instead of the receiver window', async () => {
+  it('keeps the Windows owner route for COM after the live click activates locally', async () => {
     const originalPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     try {
@@ -654,6 +654,17 @@ describe('registerNotificationHandlers', () => {
         discard
       }))
       const router = { ready: Promise.resolve(), registerTarget }
+      const webContentsSend = vi.fn()
+      getTrustedUIRendererWindowMock.mockReturnValue({
+        isDestroyed: () => false,
+        isMinimized: () => false,
+        isAlwaysOnTop: () => true,
+        show: vi.fn(),
+        focus: vi.fn(),
+        moveTop: vi.fn(),
+        setAlwaysOnTop: vi.fn(),
+        webContents: { send: webContentsSend }
+      })
       registerNotificationHandlers(
         {
           getSettings: () => ({
@@ -692,8 +703,11 @@ describe('registerNotificationHandlers', () => {
       })
 
       getNotificationEventHandler('click')()
-      expect(activate).toHaveBeenCalledTimes(1)
-      expect(getTrustedUIRendererWindowMock).not.toHaveBeenCalled()
+      expect(activate).not.toHaveBeenCalled()
+      expect(getTrustedUIRendererWindowMock).toHaveBeenCalledTimes(1)
+      expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorkspace', {
+        workspaceId: 'repo::C:\\work\\한국어'
+      })
       expect(discard).not.toHaveBeenCalled()
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
@@ -717,6 +731,17 @@ describe('registerNotificationHandlers', () => {
         activate,
         discard: vi.fn()
       }))
+      const webContentsSend = vi.fn()
+      getTrustedUIRendererWindowMock.mockReturnValue({
+        isDestroyed: () => false,
+        isMinimized: () => false,
+        isAlwaysOnTop: () => true,
+        show: vi.fn(),
+        focus: vi.fn(),
+        moveTop: vi.fn(),
+        setAlwaysOnTop: vi.fn(),
+        webContents: { send: webContentsSend }
+      })
       registerNotificationHandlers(
         {
           getSettings: () => ({
@@ -749,7 +774,8 @@ describe('registerNotificationHandlers', () => {
         expect.objectContaining({ id: routeId, toastXml: expect.stringContaining('orcaOwner=') })
       )
       getNotificationEventHandler('click')()
-      expect(activate).toHaveBeenCalledTimes(1)
+      expect(activate).not.toHaveBeenCalled()
+      expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorkspace', { workspaceId })
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
     }
