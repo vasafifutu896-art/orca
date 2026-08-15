@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { GripVertical } from 'lucide-react'
 import { stripLeadingAgentTitleDecoration } from '../../../../../shared/agent-title-decoration'
@@ -28,6 +28,7 @@ import type { TerminalManagerSelectionGesture } from './terminal-manager-selecti
 import { TerminalManagerSessionCloseButton } from './TerminalManagerSessionCloseButton'
 import { TerminalManagerSessionButton } from './TerminalManagerSessionButton'
 import { TerminalManagerSessionContextMenu } from './TerminalManagerSessionContextMenu'
+import { useTerminalManagerInlineRenameFocus } from './use-terminal-manager-inline-rename-focus'
 
 type Props = {
   groupId: string | null
@@ -82,7 +83,6 @@ export function TerminalManagerSessionRow({
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(displayTitle)
   const renameResolvedRef = useRef(false)
-  const renameFocusFrameRef = useRef<number | null>(null)
   const isPinned = Boolean(tab.isPinned || unifiedTab?.isPinned)
   const showUnreadActivity =
     hasUnreadActivity && !isRenaming && !isTerminalTabActivityLive(activityStatus)
@@ -125,20 +125,11 @@ export function TerminalManagerSessionRow({
     renameResolvedRef.current = true
     setIsRenaming(false)
   }
-  const setRenameInputElement = useCallback((input: HTMLInputElement | null) => {
-    if (renameFocusFrameRef.current !== null) {
-      cancelAnimationFrame(renameFocusFrameRef.current)
-      renameFocusFrameRef.current = null
-    }
-    if (!input) {
-      return
-    }
-    renameFocusFrameRef.current = requestAnimationFrame(() => {
-      renameFocusFrameRef.current = null
-      input.focus()
-      input.select()
-    })
-  }, [])
+  const renameFocus = useTerminalManagerInlineRenameFocus({
+    active: isRenaming,
+    isResolved: () => renameResolvedRef.current,
+    onCommit: commitRename
+  })
   const togglePin = (): void => {
     if (!unifiedTab) {
       return
@@ -189,15 +180,16 @@ export function TerminalManagerSessionRow({
       </button>
       {isRenaming ? (
         <Input
-          ref={setRenameInputElement}
+          ref={renameFocus.inputRef}
           value={renameValue}
+          data-tab-rename-input="true"
           aria-label={translate('terminalManager.renameSessionInput', 'Rename session {{value0}}', {
             value0: displayTitle
           })}
           className="mx-1 h-7 min-w-0 flex-1 px-2 py-0 text-xs"
           spellCheck={false}
           onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={commitRename}
+          onBlur={renameFocus.onBlur}
           onKeyDown={(event) => {
             if (isImeCompositionKeyDown(event)) {
               return

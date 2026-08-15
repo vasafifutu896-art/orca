@@ -125,6 +125,35 @@ test('manages project terminal groups in the right sidebar with live AI state', 
     'Codex implementation'
   )
 
+  const renameSession = manager.locator(`[data-terminal-manager-session-id="${seeded.firstTabId}"]`)
+  await renameSession
+    .getByRole('button', { name: 'Codex implementation', exact: true })
+    .click({ button: 'right' })
+  await orcaPage.getByRole('menuitem', { name: 'Rename session' }).click()
+  const contextMenuRenameInput = renameSession.getByRole('textbox', {
+    name: 'Rename session Codex implementation'
+  })
+  await expect(contextMenuRenameInput).toBeFocused()
+  await contextMenuRenameInput.fill('Codex draft')
+  await orcaPage.locator('.xterm-helper-textarea').first().focus()
+  await expect(contextMenuRenameInput).toBeFocused()
+  await expect(contextMenuRenameInput).toHaveValue('Codex draft')
+  await contextMenuRenameInput.press('Escape')
+
+  const inactiveSession = manager.locator(
+    `[data-terminal-manager-session-id="${seeded.secondTabId}"]`
+  )
+  await inactiveSession.getByRole('button', { name: 'Tests', exact: true }).dblclick()
+  const doubleClickRenameInput = inactiveSession.getByRole('textbox', {
+    name: 'Rename session Tests'
+  })
+  await expect(doubleClickRenameInput).toBeFocused()
+  await doubleClickRenameInput.fill('Tests renamed')
+  await doubleClickRenameInput.press('Enter')
+  await expect(
+    inactiveSession.getByRole('button', { name: 'Tests renamed', exact: true })
+  ).toBeVisible()
+
   const completionAlerts = manager.getByRole('button', { name: 'AI completion alerts' })
   const alertsInitiallyEnabled = (await completionAlerts.getAttribute('aria-pressed')) === 'true'
   await completionAlerts.click()
@@ -195,7 +224,7 @@ test('manages project terminal groups in the right sidebar with live AI state', 
   )
   await firstSession.getByRole('button', { name: 'Codex implementation', exact: true }).click()
   await secondSession
-    .getByRole('button', { name: 'Tests', exact: true })
+    .getByRole('button', { name: 'Tests renamed', exact: true })
     .click({ modifiers: ['Control'] })
   await expect(manager.locator('[data-terminal-manager-selection-count="2"]')).toBeVisible()
   await dragWithPointer(
@@ -246,7 +275,7 @@ test('manages project terminal groups in the right sidebar with live AI state', 
     `[data-terminal-manager-group-id="${implementationGroupId}"]`
   )
   await expect(restoredGroup.getByText('Codex implementation', { exact: true })).toBeVisible()
-  await expect(restoredGroup.getByText('Tests', { exact: true })).toBeVisible()
+  await expect(restoredGroup.getByText('Tests renamed', { exact: true })).toBeVisible()
   await expect(restoredGroup.getByText('Server logs', { exact: true })).toBeVisible()
 
   const thirdSession = restoredManager.locator(

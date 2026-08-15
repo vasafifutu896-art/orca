@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import {
   ArrowDown,
@@ -29,6 +29,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { terminalManagerGroupDragId, type TerminalManagerDragData } from './terminal-manager-dnd'
 import type { TerminalManagerGroup } from './terminal-manager-layout'
+import { useTerminalManagerInlineRenameFocus } from './use-terminal-manager-inline-rename-focus'
 
 type Props = {
   collapsed: boolean
@@ -85,7 +86,6 @@ export function TerminalManagerGroupHeader({
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(group?.name ?? '')
   const renameResolvedRef = useRef(false)
-  const renameFocusFrameRef = useRef<number | null>(null)
   const groupId = group?.id ?? null
   const groupName = group?.name ?? translate('terminalManager.ungrouped', 'Ungrouped')
 
@@ -112,29 +112,20 @@ export function TerminalManagerGroupHeader({
     renameResolvedRef.current = true
     setIsRenaming(false)
   }
-  const setRenameInputElement = useCallback((input: HTMLInputElement | null) => {
-    if (renameFocusFrameRef.current !== null) {
-      cancelAnimationFrame(renameFocusFrameRef.current)
-      renameFocusFrameRef.current = null
-    }
-    if (!input) {
-      return
-    }
-    // Radix restores focus while closing its menu; focus after teardown so blur cannot commit early.
-    renameFocusFrameRef.current = requestAnimationFrame(() => {
-      renameFocusFrameRef.current = null
-      input.focus()
-      input.select()
-    })
-  }, [])
+  const renameFocus = useTerminalManagerInlineRenameFocus({
+    active: isRenaming,
+    isResolved: () => renameResolvedRef.current,
+    onCommit: commitRename
+  })
 
   const header = (
     <div className="group/group flex h-8 min-w-0 items-center px-1">
       {group ? <TerminalManagerGroupDragHandle group={group} /> : <span className="w-1" />}
       {isRenaming ? (
         <Input
-          ref={setRenameInputElement}
+          ref={renameFocus.inputRef}
           value={renameValue}
+          data-tab-rename-input="true"
           aria-label={translate('terminalManager.renameGroupInput', 'Rename group {{value0}}', {
             value0: groupName
           })}
@@ -142,7 +133,7 @@ export function TerminalManagerGroupHeader({
           maxLength={80}
           spellCheck={false}
           onChange={(event) => setRenameValue(event.target.value)}
-          onBlur={commitRename}
+          onBlur={renameFocus.onBlur}
           onKeyDown={(event) => {
             if (isImeCompositionKeyDown(event)) {
               return
