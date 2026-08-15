@@ -1,6 +1,6 @@
 # Notification click did not foreground its Orca window on Windows
 
-Status: live cross-process fix and Windows artifact checks passed; interactive Action Center smoke pending
+Status: folder-workspace click fix implemented and locally verified; updated Windows artifact pending
 
 ## Reported behavior
 
@@ -26,6 +26,19 @@ owner identifier or cross-process relay, so a wrongly delivered activation could
 wrong Orca window. The previous claim that all live notification callbacks are necessarily
 process-local was incomplete: it applies to the in-memory notification-object callback, not the
 shared Windows COM activation path.
+
+## Folder-workspace root cause reproduced after `.10`
+
+The live screenshot showed the notification title beginning with
+`folder:8449c2be-30a2-4d24-a732-b37da8a9b07c`. That is the actual workspace ID passed by the
+renderer. Notification dispatch still treated only IDs containing `::` as actionable, so a folder
+workspace notification received no owner route, no custom toast activation arguments, and no
+`Notification` click listener. Clicking it was therefore a no-op even with only one Orca process.
+
+Removing that gate alone was insufficient: the existing `ui:activateWorktree` renderer handler
+fetches a Git repository and activates a Git worktree. Folder workspaces require the canonical
+`activateAndRevealWorkspace` path so folder path-status checks, workspace state, history, terminal
+restoration, and sidebar reveal remain intact.
 
 ## `.7` fix
 
@@ -58,6 +71,16 @@ shared Windows COM activation path.
 - If foreground permission is denied or the addon cannot load, still commit only to the validated
   owner and use Orca's reinforced restore/show/topmost path; the wrong receiver remains untouched.
 
+## Folder-workspace fix
+
+- Validate both legacy `repoId::worktreePath` IDs and canonical `folder:<id>` workspace keys with
+  one shared predicate used by dispatch, Windows readiness gating, and window activation.
+- Register the same owner-token route, custom toast XML, and click listener for folder workspace
+  notifications.
+- Send a workspace-aware renderer event and activate through `activateAndRevealWorkspace`, then
+  retain exact tab/terminal-leaf focus for the originating pane.
+- Reject malformed plain strings and an empty `folder:` key without focusing any window.
+
 ## Existing regression evidence
 
 - A Windows-specific notification test failed before the fix because `app.focus()` was never called.
@@ -72,8 +95,11 @@ shared Windows COM activation path.
 - The in-memory click event and global Windows activation callback must be deduplicated.
 - Korean text, Windows paths, XML metacharacters, invalid payloads, oversized payloads, and stale
   route IDs must be handled safely.
+- The exact `folder:8449c2be-30a2-4d24-a732-b37da8a9b07c` shape waits for the owner pipe, receives
+  activation arguments and a click handler, relays to the owning process, activates through the
+  generic workspace path, and focuses the exact terminal leaf.
 
-The portable-release boundary now passes 283 targeted tests, with four Windows-only native/pipe
+The portable-release boundary now passes 287 targeted tests, with four Windows-only native/pipe
 checks skipped on Linux. Node and renderer typechecks, formatting, and relevant lint checks also
 pass. The Windows workflow compiles and loads the N-API addon in both Node and Electron and runs
 the real named-pipe checks.

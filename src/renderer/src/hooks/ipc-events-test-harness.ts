@@ -126,6 +126,7 @@ export type IpcEventsHarness = {
   jumpToWorktreeIndex: (index: number) => void
   jumpToTabIndex: (index: number) => void
   navigationUpdate: (event: { browserPageId: string; url: string; title: string }) => void
+  activateNotificationWorkspace: (workspaceId: string) => void
   /** Standard (non-palette) target of a workspace digit chord. */
   activateAndRevealWorkspace: ReturnType<typeof vi.fn>
   signalNotificationActivationReady: ReturnType<typeof vi.fn>
@@ -152,6 +153,7 @@ export async function loadIpcEventsHarness(
   let navigationUpdateListener:
     | ((event: { browserPageId: string; url: string; title: string }) => void)
     | null = null
+  let notificationWorkspaceListener: ((data: { workspaceId: string }) => void) | null = null
   const indexJumpListeners = new Map<string, (index: number) => void>()
 
   vi.resetModules()
@@ -206,6 +208,10 @@ export async function loadIpcEventsHarness(
           replyTerminalCreate,
           onCreateTerminal: (listener: (request: CreateTerminalRequest) => void) => {
             createTerminalListener = listener
+            return () => {}
+          },
+          onActivateWorkspace: (listener: (data: { workspaceId: string }) => void) => {
+            notificationWorkspaceListener = listener
             return () => {}
           },
           onRequestTerminalCreate: (listener: (request: RequestTerminalCreateRequest) => void) => {
@@ -290,6 +296,12 @@ export async function loadIpcEventsHarness(
         throw new Error('Expected the browser navigation listener to be registered')
       }
       navigationUpdateListener(event)
+    },
+    activateNotificationWorkspace: (workspaceId) => {
+      if (typeof notificationWorkspaceListener !== 'function') {
+        throw new Error('Expected the notification-workspace listener to be registered')
+      }
+      notificationWorkspaceListener({ workspaceId })
     },
     activateAndRevealWorkspace,
     signalNotificationActivationReady

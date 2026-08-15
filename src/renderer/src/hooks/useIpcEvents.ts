@@ -1460,6 +1460,13 @@ export function useIpcEvents(onListenersReady?: (ready: true) => void): void {
       })
     )
 
+    const unsubscribeActivateWorkspace = window.api.ui.onActivateWorkspace?.(({ workspaceId }) => {
+      activateAndRevealWorkspace(workspaceId)
+    })
+    if (unsubscribeActivateWorkspace) {
+      unsubs.push(unsubscribeActivateWorkspace)
+    }
+
     unsubs.push(
       window.api.ui.onCreateTerminal(
         ({

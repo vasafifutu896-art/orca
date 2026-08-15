@@ -2825,6 +2825,7 @@ function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
     onToggleStatusBar: () => noopUnsubscribe,
     onDictationKeyDown: () => noopUnsubscribe,
     onActivateWorktree: () => noopUnsubscribe,
+    onActivateWorkspace: () => noopUnsubscribe,
     onCreateTerminal: () => noopUnsubscribe,
     onRequestTerminalCreate: () => noopUnsubscribe,
     onRequestTerminalTabMount: () => noopUnsubscribe,

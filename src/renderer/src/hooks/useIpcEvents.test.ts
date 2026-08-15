@@ -165,6 +165,16 @@ describe('notification activation readiness', () => {
     harness.useIpcEvents()
     expect(harness.signalNotificationActivationReady).not.toHaveBeenCalled()
   })
+
+  it('activates folder notification targets through the canonical workspace path', async () => {
+    const harness = await loadIpcEventsHarness(createHarnessStoreState({ tabsByWorktree: {} }))
+    const workspaceId = folderWorkspaceKey('8449c2be-30a2-4d24-a732-b37da8a9b07c')
+
+    harness.useIpcEvents()
+    harness.activateNotificationWorkspace(workspaceId)
+
+    expect(harness.activateAndRevealWorkspace).toHaveBeenCalledWith(workspaceId)
+  })
 })
 
 function expectWorktreeRouting(worktreeId: string): unknown {

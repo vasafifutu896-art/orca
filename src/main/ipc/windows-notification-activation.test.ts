@@ -166,7 +166,7 @@ describe('createWindowsNotificationActivationRouter', () => {
       token: tokenSequence(OTHER_OWNER)
     })
     const target = {
-      worktreeId: 'repo::C:\\work\\한국어',
+      worktreeId: 'folder:8449c2be-30a2-4d24-a732-b37da8a9b07c',
       paneKey: 'tab-2:11111111-1111-4111-8111-111111111111'
     }
     const registration = owner.registerTarget(target)

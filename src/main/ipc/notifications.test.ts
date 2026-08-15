@@ -561,9 +561,8 @@ describe('registerNotificationHandlers', () => {
     expect(popoutSend).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
     expect(notificationRemoveListenerMock).toHaveBeenCalledWith('click', expect.any(Function))
-    expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorktree', {
-      repoId: 'repo',
-      worktreeId: 'repo::wt1'
+    expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorkspace', {
+      workspaceId: 'repo::wt1'
     })
     expect(webContentsSend).toHaveBeenCalledWith('ui:focusTerminal', {
       tabId: 'tab-1',
@@ -625,9 +624,8 @@ describe('registerNotificationHandlers', () => {
       expect(focus).toHaveBeenCalledTimes(1)
       expect(moveTop).toHaveBeenCalledTimes(1)
       expect(setAlwaysOnTop).toHaveBeenCalledWith(true)
-      expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorktree', {
-        repoId: 'repo',
-        worktreeId: 'repo::wt1'
+      expect(webContentsSend).toHaveBeenCalledWith('ui:activateWorkspace', {
+        workspaceId: 'repo::wt1'
       })
 
       vi.advanceTimersByTime(100)
@@ -697,6 +695,61 @@ describe('registerNotificationHandlers', () => {
       expect(activate).toHaveBeenCalledTimes(1)
       expect(getTrustedUIRendererWindowMock).not.toHaveBeenCalled()
       expect(discard).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
+
+  it('makes the exact folder workspace notification actionable on Windows', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      const routeId = '22222222-2222-4222-8222-222222222222'
+      const ownerId = '11111111-1111-4111-8111-111111111111'
+      const activate = vi.fn(() => 'activated')
+      let resolveReady = (_available: boolean): void => {}
+      const ready = new Promise<boolean>((resolve) => {
+        resolveReady = resolve
+      })
+      const registerTarget = vi.fn(() => ({
+        routeId,
+        activationArguments: `type=click&tag=${routeId}&orcaOwner=${ownerId}&orcaRoute=${routeId}`,
+        activate,
+        discard: vi.fn()
+      }))
+      registerNotificationHandlers(
+        {
+          getSettings: () => ({
+            notifications: {
+              enabled: true,
+              agentTaskComplete: true,
+              terminalBell: true,
+              suppressWhenFocused: false
+            }
+          })
+        } as never,
+        undefined,
+        { ready, registerTarget } as never
+      )
+      const workspaceId = 'folder:8449c2be-30a2-4d24-a732-b37da8a9b07c'
+      const paneKey = 'tab-folder:11111111-1111-4111-8111-111111111111'
+
+      const dispatch = getDispatchHandler()(
+        {},
+        { source: 'agent-task-complete', worktreeId: workspaceId, paneKey }
+      )
+      expect(notificationCtorMock).not.toHaveBeenCalled()
+      expect(registerTarget).not.toHaveBeenCalled()
+
+      resolveReady(true)
+      expect(await dispatch).toEqual({ delivered: true })
+
+      expect(registerTarget).toHaveBeenCalledWith({ worktreeId: workspaceId, paneKey })
+      expect(notificationCtorMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: routeId, toastXml: expect.stringContaining('orcaOwner=') })
+      )
+      getNotificationEventHandler('click')()
+      expect(activate).toHaveBeenCalledTimes(1)
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
     }

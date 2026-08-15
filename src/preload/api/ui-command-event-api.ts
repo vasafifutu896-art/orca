@@ -120,6 +120,7 @@ export type UiCommandEventApi = {
       defaultTabs?: WorktreeDefaultTabsLaunch
     }) => void
   ) => () => void
+  onActivateWorkspace?: (callback: (data: { workspaceId: string }) => void) => () => void
   onCreateTerminal: (
     callback: (data: {
       requestId?: string

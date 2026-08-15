@@ -32,7 +32,10 @@ import { buildNotificationOptions } from './notification-options'
 import { readNotificationAuthorizationStatus } from './notification-authorization-status'
 import { setTrayAttention } from '../tray/system-tray'
 import { isMainWindowVisible } from '../window/main-window-visibility'
-import { activateNotificationTarget } from './notification-window-activation'
+import {
+  activateNotificationTarget,
+  isNotificationWorkspaceId
+} from './notification-window-activation'
 import {
   buildWindowsNotificationToastXml,
   type WindowsNotificationActivationRouter
@@ -468,6 +471,13 @@ export function registerNotificationHandlers(
         return { delivered: false, reason: 'not-supported' }
       }
 
+      const notificationTarget = isNotificationWorkspaceId(args.worktreeId)
+        ? {
+            worktreeId: args.worktreeId,
+            ...(args.paneKey ? { paneKey: args.paneKey } : {})
+          }
+        : null
+
       function deliverNativeNotification():
         | NotificationDispatchResult
         | Promise<NotificationDispatchResult> {
@@ -477,13 +487,6 @@ export function registerNotificationHandlers(
           // Why: macOS treats an unset sound as silent, so request Electron's default when using the OS sound.
           notificationOptions.sound = 'default'
         }
-        const notificationTarget =
-          args.worktreeId && args.worktreeId.includes('::')
-            ? {
-                worktreeId: args.worktreeId,
-                ...(args.paneKey ? { paneKey: args.paneKey } : {})
-              }
-            : null
         const activationRoute =
           process.platform === 'win32' && windowsActivationRouter && notificationTarget
             ? windowsActivationRouter.registerTarget(notificationTarget)
@@ -559,7 +562,7 @@ export function registerNotificationHandlers(
         }
         notification.on('failed', failedHandler)
 
-        // Why: worktreeId is formatted "repoId::worktreePath"; without the separator we can't extract a repoId, so skip the click-to-navigate binding.
+        // Why: global/test notifications have no workspace destination, so only workspace-scoped alerts navigate.
         if (notificationTarget) {
           clickHandler = () => {
             release()
@@ -599,11 +602,7 @@ export function registerNotificationHandlers(
         return { delivered: true }
       }
 
-      if (
-        process.platform === 'win32' &&
-        windowsActivationRouter &&
-        args.worktreeId?.includes('::')
-      ) {
+      if (process.platform === 'win32' && windowsActivationRouter && notificationTarget) {
         // Why: do not expose an actionable toast until its owner pipe can receive a
         // Windows COM activation that lands in another Orca process.
         return windowsActivationRouter.ready

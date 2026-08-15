@@ -1,5 +1,6 @@
 import { app } from 'electron'
-import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
+import { splitWorktreeId } from '../../shared/worktree/id'
+import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import { activateExistingWindow } from '../window/focus-existing-window'
 import { getTrustedUIRendererWindow } from './ui'
@@ -10,12 +11,24 @@ export type NotificationActivationTarget = {
 }
 export type NotificationTargetActivationResult = 'activated' | 'navigation-pending' | 'unavailable'
 
+export function isNotificationWorkspaceId(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false
+  }
+  const workspaceScope = parseWorkspaceKey(value)
+  if (workspaceScope) {
+    return workspaceScope.type === 'folder'
+  }
+  const worktree = splitWorktreeId(value)
+  return Boolean(worktree?.repoId && worktree.worktreePath)
+}
+
 /** Focuses immediately; navigation can remain queued until the renderer installs its listeners. */
 export function activateNotificationTarget(
   target: NotificationActivationTarget,
   options: { sendNavigation?: boolean } = {}
 ): NotificationTargetActivationResult {
-  if (!target.worktreeId.includes('::')) {
+  if (!isNotificationWorkspaceId(target.worktreeId)) {
     return 'unavailable'
   }
   const win = getTrustedUIRendererWindow()
@@ -27,9 +40,8 @@ export function activateNotificationTarget(
   if (options.sendNavigation === false) {
     return 'navigation-pending'
   }
-  win.webContents.send('ui:activateWorktree', {
-    repoId: getRepoIdFromWorktreeId(target.worktreeId),
-    worktreeId: target.worktreeId
+  win.webContents.send('ui:activateWorkspace', {
+    workspaceId: target.worktreeId
   })
 
   // Why: the stable leaf ID makes a completion toast land on the exact split pane.
