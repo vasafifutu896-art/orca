@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { GripVertical, Pin } from 'lucide-react'
+import { GripVertical } from 'lucide-react'
 import { stripLeadingAgentTitleDecoration } from '../../../../../shared/agent-title-decoration'
 import { resolveTerminalTabTitle } from '../../../../../shared/tab-title-resolution'
 import { translate } from '@/i18n/i18n'
@@ -8,9 +8,7 @@ import { isImeCompositionKeyDown } from '@/lib/ime-composition-keyboard-event'
 import { useTabAgent } from '@/lib/use-tab-agent'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { TerminalTabLeadingIcon } from '../../tab-bar/TerminalTabLeadingIcon'
 import {
   isTerminalTabActivityLive,
   resolveTerminalTabActivityStatus,
@@ -28,6 +26,7 @@ import {
 import type { TerminalManagerGroup } from './terminal-manager-layout'
 import type { TerminalManagerSelectionGesture } from './terminal-manager-selection'
 import { TerminalManagerSessionCloseButton } from './TerminalManagerSessionCloseButton'
+import { TerminalManagerSessionButton } from './TerminalManagerSessionButton'
 import { TerminalManagerSessionContextMenu } from './TerminalManagerSessionContextMenu'
 
 type Props = {
@@ -38,6 +37,7 @@ type Props = {
   onMove: (sessionId: string, groupId: string | null, beforeSessionId?: string) => void
   onSelect: (sessionId: string, gesture: TerminalManagerSelectionGesture) => void
   session: WorktreeTerminalSession
+  workingDirectory: string | null
 }
 
 export function TerminalManagerSessionRow({
@@ -47,7 +47,8 @@ export function TerminalManagerSessionRow({
   isSelected,
   onMove,
   onSelect,
-  session
+  session,
+  workingDirectory
 }: Props): React.JSX.Element {
   const { tab, unifiedTab } = session
   const generatedTitlesEnabled = useAppStore(
@@ -162,7 +163,7 @@ export function TerminalManagerSessionRow({
         setDropNodeRef(node)
       }}
       className={cn(
-        'group/session flex min-w-0 items-center rounded-md border border-transparent text-foreground transition-colors',
+        'group/session flex min-h-10 min-w-0 items-center rounded-md border border-transparent text-foreground transition-colors',
         isActive ? 'bg-accent' : 'hover:bg-accent/60',
         isSelected && 'border-ring/30 bg-accent/55',
         isOver && 'border-ring/60 bg-accent/75',
@@ -176,7 +177,7 @@ export function TerminalManagerSessionRow({
       <button
         ref={setActivatorNodeRef}
         type="button"
-        className="flex size-5 shrink-0 touch-none cursor-grab items-center justify-center text-muted-foreground/45 outline-none active:cursor-grabbing focus-visible:text-foreground"
+        className="flex w-5 shrink-0 self-stretch touch-none cursor-grab items-center justify-center text-muted-foreground/45 outline-none active:cursor-grabbing focus-visible:text-foreground"
         data-terminal-manager-session-drag-handle="true"
         aria-label={translate('terminalManager.dragSession', 'Drag session {{value0}}', {
           value0: displayTitle
@@ -211,14 +212,16 @@ export function TerminalManagerSessionRow({
           }}
         />
       ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 min-w-0 flex-1 justify-start gap-0 rounded-md px-1.5 text-xs font-normal hover:bg-transparent"
-          aria-current={isActive ? 'page' : undefined}
-          aria-pressed={isSelected}
-          aria-label={displayTitle}
+        <TerminalManagerSessionButton
+          activityStatus={activityStatus}
+          displayTitle={displayTitle}
+          isActive={isActive}
+          isPinned={isPinned}
+          isSelected={isSelected}
+          showUnreadActivity={showUnreadActivity}
+          tab={tab}
+          tabAgent={tabAgent}
+          workingDirectory={workingDirectory}
           onClick={(event) => {
             const additive = event.ctrlKey || event.metaKey
             const range = event.shiftKey
@@ -238,24 +241,7 @@ export function TerminalManagerSessionRow({
             event.preventDefault()
             closeSession()
           }}
-        >
-          <TerminalTabLeadingIcon
-            agent={tabAgent}
-            activityStatus={activityStatus}
-            shell={tab.shellOverride}
-            showUnreadActivity={showUnreadActivity}
-            isActive={isActive}
-          />
-          {isPinned ? <Pin className="mr-1 size-3 shrink-0 text-muted-foreground" /> : null}
-          <span className="min-w-0 flex-1 truncate text-left">{displayTitle}</span>
-          {tab.color ? (
-            <span
-              className="ml-1 size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: tab.color }}
-              aria-hidden="true"
-            />
-          ) : null}
-        </Button>
+        />
       )}
       {!isRenaming && !isPinned ? (
         <TerminalManagerSessionCloseButton displayTitle={displayTitle} onClose={closeSession} />

@@ -24,6 +24,18 @@ describe('parseOsc7', () => {
     )
   })
 
+  it('accepts a new UNC host after a local Windows pane starts on a drive', () => {
+    expect(parseOsc7('file:////fileserver/team/project', { windowsUncPath: true })).toBe(
+      '\\\\fileserver\\team\\project'
+    )
+  })
+
+  it('keeps host-qualified paths POSIX for Git Bash and remote Linux shells', () => {
+    expect(parseOsc7('file://workstation/c/Users/jin/repo', { windowsUncPath: true })).toBe(
+      '/c/Users/jin/repo'
+    )
+  })
+
   it('does not treat unrelated OSC-7 hosts as UNC servers', () => {
     expect(parseOsc7('file://remote/home/jin/repo', { uncHost: 'server' })).toBe('/home/jin/repo')
   })

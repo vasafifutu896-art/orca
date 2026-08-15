@@ -25,6 +25,7 @@ import { TerminalManagerWorkspaceHeader } from './TerminalManagerWorkspaceHeader
 import { useTerminalManagerDnd } from './use-terminal-manager-dnd'
 import { useTerminalManagerLayout } from './use-terminal-manager-layout'
 import { useTerminalManagerSelection } from './use-terminal-manager-selection'
+import { useTerminalManagerWorkingDirectories } from './use-terminal-manager-working-directories'
 
 const EMPTY_TERMINAL_TABS: readonly TerminalTab[] = []
 const EMPTY_UNIFIED_TABS = [] as const
@@ -63,6 +64,12 @@ export function TerminalManagerWorkspace({
     [sessions]
   )
   const [layout, setLayout] = useTerminalManagerLayout(worktreeId, sessionIds)
+  const workingDirectoryBySessionId = useTerminalManagerWorkingDirectories({
+    activeTerminalTabId,
+    layout,
+    sessions,
+    worktreePath: worktree?.path ?? null
+  })
   const visualSessionIds = useMemo(
     () => [
       ...layout.groups.flatMap((group) => sessionsForTerminalManagerGroup(layout, group.id)),
@@ -174,6 +181,7 @@ export function TerminalManagerWorkspace({
               collapsed={group.collapsed}
               sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, group.id))}
               groups={layout.groups}
+              workingDirectoryBySessionId={workingDirectoryBySessionId}
               activeTerminalTabId={activeTerminalTabId}
               groupIndex={index}
               isSessionSelected={selection.isSelected}
@@ -197,6 +205,7 @@ export function TerminalManagerWorkspace({
             collapsed={layout.ungroupedCollapsed}
             sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, null))}
             groups={layout.groups}
+            workingDirectoryBySessionId={workingDirectoryBySessionId}
             activeTerminalTabId={activeTerminalTabId}
             groupIndex={layout.groups.length}
             isSessionSelected={selection.isSelected}

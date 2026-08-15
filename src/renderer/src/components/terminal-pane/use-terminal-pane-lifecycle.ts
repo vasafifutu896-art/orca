@@ -21,7 +21,11 @@ import {
 } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 import { normalizeTerminalLineHeight } from '../../../../shared/terminal-line-height-settings'
 import { normalizeTerminalTuiMouseWheelMultiplier } from '@/lib/pane-manager/pane-terminal-mouse-wheel'
-import { buildWindowsPtyCompatibilityOptions } from '@/lib/pane-manager/windows-pty-compatibility'
+import {
+  buildWindowsPtyCompatibilityOptions,
+  isLocalNativeWindowsConpty,
+  resolveWindowsShellOverride
+} from '@/lib/pane-manager/windows-pty-compatibility'
 import { buildTerminalKeyboardProtocolOptions } from '@/lib/pane-manager/terminal-keyboard-protocol'
 import { resolvePaneKeyboardProtocolAgent } from './terminal-keyboard-protocol-pane-agent'
 import { useAppStore } from '@/store'
@@ -59,6 +63,7 @@ import { resolveTerminalHttpLinkSourceOwner } from './terminal-http-link-source-
 import { canOpenWorkspaceBrowserTabOnRuntime } from '@/lib/workspace-browser-tab-open'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
+import { resolveWindowsShellStartupFamily } from '../../../../shared/windows-terminal-shell'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { SetupSplitDirection } from '../../../../shared/worktree/launch-types'
 import type { TerminalPaneSplitSource } from '../../../../shared/feature-education-telemetry'
@@ -87,6 +92,13 @@ import {
 } from './osc52-clipboard-toast'
 import { copyTerminalSelection } from './terminal-selection-copy'
 import { parseOsc7 } from './parse-osc7'
+import {
+  claimTerminalPaneCwdOwner,
+  clearTerminalPaneCwd,
+  clearTerminalTabCwds,
+  markTerminalTabCwdsUnconfirmed,
+  publishTerminalPaneCwd
+} from './terminal-pane-cwd-registry'
 import { guardParserHandler } from './terminal-parser-handler-guard'
 import { resolveTerminalJisYenInput } from './terminal-jis-yen-input'
 import {
@@ -729,6 +741,7 @@ export function useTerminalPaneLifecycle({
     }
     const expandedStyleSnapshots = expandedStyleSnapshotRef.current
     const paneTransports = paneTransportsRef.current
+    const cwdRegistryOwner = {}
     const panePtyBindings = panePtyBindingsRef.current
     const linkDisposables = linkProviderDisposablesRef.current
     const terminalHandleLinkDisposables = terminalHandleLinkDisposablesRef.current
@@ -756,6 +769,22 @@ export function useTerminalPaneLifecycle({
     )
     queuedInitialCwdRef.current = initialCwdResolution.queuedInitialCwd
     const startupCwd = initialCwdResolution.startupCwd
+    const osc7StoreState = useAppStore.getState()
+    const osc7Tab = osc7StoreState.tabsByWorktree[worktreeId]?.find(
+      (candidate) => candidate.id === tabId
+    )
+    const osc7ShellOverride = resolveWindowsShellOverride(
+      osc7Tab?.shellOverride,
+      osc7StoreState.settings?.terminalWindowsShell
+    )
+    const osc7WindowsPowerShell =
+      isLocalNativeWindowsConpty({
+        userAgent: navigator.userAgent,
+        connectionId: getConnectionId(worktreeId) ?? null,
+        cwd: startupCwd,
+        shellOverride: osc7ShellOverride,
+        executionHostId: getExecutionHostIdForWorktree(osc7StoreState, worktreeId)
+      }) && resolveWindowsShellStartupFamily(osc7ShellOverride) === 'powershell'
     const terminalHomePath = resolveTerminalHomePathFromEnv(startup?.env)
     const wslDistro = getConnectionId(worktreeId)
       ? null
@@ -946,6 +975,8 @@ export function useTerminalPaneLifecycle({
     const manager = new PaneManager(container, {
       // `spawnHints.cwd` (from Split actions) lets the new PTY inherit the source pane's cwd — see docs/ssh-split-pane-inherit-cwd.md.
       onPaneCreated: (pane, spawnHints) => {
+        const paneCwdKey = makePaneKey(tabId, pane.leafId)
+        claimTerminalPaneCwdOwner(paneCwdKey, cwdRegistryOwner)
         // OSC 52 — TUI-initiated clipboard writes (Zellij/tmux/nvim/fzf/ssh).
         // Why: read settingsRef at fire time so mid-session gate toggles apply; return true in both paths so xterm doesn't fall through.
         const osc52Disposable = pane.terminal.parser.registerOscHandler(
@@ -974,10 +1005,20 @@ export function useTerminalPaneLifecycle({
         const osc7Disposable = pane.terminal.parser.registerOscHandler(
           7,
           guardParserHandler('osc-7-cwd', (data) => {
-            const parsedCwd = parseOsc7(data, { uncHost: osc7UncHost })
+            const parsedCwd = parseOsc7(data, {
+              uncHost: osc7UncHost,
+              windowsUncPath: osc7WindowsPowerShell
+            })
             if (parsedCwd) {
               const confirmed = !isPaneReplaying(replayingPanesRef, pane.id)
               paneCwdRef.current.set(pane.id, { cwd: parsedCwd, confirmed })
+              publishTerminalPaneCwd({
+                paneKey: paneCwdKey,
+                ptyId: paneTransports.get(pane.id)?.getPtyId() ?? spawnHints?.ptyId ?? null,
+                cwd: parsedCwd,
+                confirmed,
+                owner: cwdRegistryOwner
+              })
             }
             return true
           })
@@ -1381,6 +1422,9 @@ export function useTerminalPaneLifecycle({
         }
         // Why: drop the tracked cwd so the map doesn't accumulate dead entries over long sessions.
         paneCwdRef.current.delete(paneId)
+        if (closedPane?.leafId) {
+          clearTerminalPaneCwd(makePaneKey(tabId, closedPane.leafId), cwdRegistryOwner)
+        }
         const mouseHideDisposable = mouseHideDisposablesRef.current.get(paneId)
         if (mouseHideDisposable) {
           mouseHideDisposable.dispose()
@@ -1823,6 +1867,11 @@ export function useTerminalPaneLifecycle({
       const tabStillExists = Boolean(
         currentWorktreeTabs?.some((candidate) => candidate.id === tabId)
       )
+      if (!tabStillExists) {
+        clearTerminalTabCwds(tabId)
+      } else {
+        markTerminalTabCwdsUnconfirmed(tabId, cwdRegistryOwner)
+      }
       unregisterRuntimeTab()
       if (resizeRaf !== null) {
         cancelAnimationFrame(resizeRaf)

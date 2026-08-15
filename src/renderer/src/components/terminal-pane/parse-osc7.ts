@@ -11,6 +11,8 @@ const OSC7_URI = /^file:\/\/([^/]*)(\/.*)$/
 
 type ParseOsc7Options = {
   uncHost?: string | null
+  /** Accept Orca's empty-authority `file:////server/share` PowerShell UNC encoding. */
+  windowsUncPath?: boolean
 }
 
 /**
@@ -34,12 +36,15 @@ export function parseOsc7(data: string, options: ParseOsc7Options = {}): string 
     return null
   }
   const isWindowsDrivePath = /^\/[A-Za-z]:/.test(path)
-  if (options.uncHost && !isWindowsDrivePath) {
+  if (options.windowsUncPath && !host && /^\/\/[^/]/.test(path)) {
+    return path.replace(/\//g, '\\')
+  }
+  const matchesKnownUncHost =
+    Boolean(options.uncHost) && host.toLowerCase() === options.uncHost?.toLowerCase()
+  if (host && !isWindowsDrivePath && matchesKnownUncHost) {
     // Why: only the launch UNC server is known to be a Windows file host.
-    // Other OSC-7 hosts can come from SSH/Linux shells and must stay POSIX.
-    if (host.toLowerCase() === options.uncHost.toLowerCase()) {
-      return `\\\\${host}${path.replace(/\//g, '\\')}`
-    }
+    // Other OSC-7 hosts can come from nested SSH/POSIX shells and must stay POSIX.
+    return `\\\\${host}${path.replace(/\//g, '\\')}`
   }
   // Why: on Windows the URI looks like file:///C:/Users/... — the path is
   // `/C:/Users/...`, which `spawn`'s cwd option does not accept. Strip the

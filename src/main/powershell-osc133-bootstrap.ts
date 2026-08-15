@@ -47,6 +47,22 @@ ${getPowerShellCodexShellLaunchPreflight()}
         }
         $Global:__OrcaOsc133State.HasSeenPrompt = $true
 
+        # OSC 7 gives terminal surfaces the live filesystem cwd. System.Uri
+        # percent-escapes drive, UNC, Unicode, and spaced paths. Orca writes UNC
+        # with an empty authority so a nested SSH shell's file://host/path cannot
+        # be mistaken for a Windows share by the renderer.
+        try {
+            $location = Get-Location
+            if ($location.Provider.Name -eq "FileSystem") {
+                $cwdUriObject = [System.Uri]::new($location.ProviderPath)
+                $cwdUri = $cwdUriObject.AbsoluteUri
+                if ($cwdUriObject.IsUnc) {
+                    $cwdUri = "file:////$($cwdUriObject.Host)$($cwdUriObject.AbsolutePath)"
+                }
+                $result += "$($Global:__OrcaOsc133State.Esc)]7;$cwdUri$($Global:__OrcaOsc133State.Bel)"
+            }
+        } catch { }
+
         $result += "$($Global:__OrcaOsc133State.Esc)]133;A$($Global:__OrcaOsc133State.Bel)"
         # Preserve the previous success/failure value for prompts that inspect it.
         if ($fakeExitCode -ne 0) { Write-Error "failure" -ea ignore }

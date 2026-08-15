@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { encodePowerShellCommand } from './powershell-osc133-bootstrap'
 import { resolveWindowsShellLaunchArgs } from './providers/windows-shell-args'
@@ -25,6 +26,21 @@ for (const shell of WINDOWS_POWERSHELLS) {
         }
       }
     )
+
+    it('emits an escaped OSC 7 filesystem URI from the wrapped prompt', () => {
+      const root = mkdtempSync(join(tmpdir(), 'orca-powershell-osc7-'))
+      const cwd = join(root, '한글 folder')
+      mkdirSync(cwd)
+      try {
+        const output = runBootstrap(shell, 'FullLanguage', cwd)
+        const encodedPrompt = /;promptBase64=([A-Za-z0-9+/=]+)/.exec(output)?.[1]
+        expect(encodedPrompt).toBeTruthy()
+        const prompt = Buffer.from(encodedPrompt ?? '', 'base64').toString('utf8')
+        expect(prompt).toContain(`\u001b]7;${pathToFileURL(cwd).href}\u0007`)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
   })
 }
 
@@ -93,7 +109,7 @@ $runner.Commands.Clear()
 $null = $runner.AddScript($bootstrap).Invoke()
 $runner.Commands.Clear()
 $runner.AddScript(
-  '"mode=$($ExecutionContext.SessionState.LanguageMode);codexHome=$env:CODEX_HOME;orcaHome=$env:ORCA_CODEX_HOME;startupCount=$env:ORCA_TEST_STARTUP_COUNT;cwd=$($PWD.Path)"'
+  '$promptText = [string](prompt); "mode=$($ExecutionContext.SessionState.LanguageMode);codexHome=$env:CODEX_HOME;orcaHome=$env:ORCA_CODEX_HOME;startupCount=$env:ORCA_TEST_STARTUP_COUNT;cwd=$($PWD.Path);promptBase64=$([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($promptText)))"'
 ).Invoke()
 $runner.Dispose()
 $runspace.Dispose()
