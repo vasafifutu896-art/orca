@@ -206,6 +206,8 @@ export function buildRemovedSshTargetCleanupPatch(
   const removedConnectionState = nextConnectionStates.delete(targetId)
   const nextLabels = new Map(state.sshTargetLabels)
   const removedLabel = nextLabels.delete(targetId)
+  const nextHosts = new Map(state.sshTargetHosts)
+  const removedHost = nextHosts.delete(targetId)
   const nextHydrated = new Set(state.remoteWorkspaceHydratedTargetIds)
   const removedHydrated = nextHydrated.delete(targetId)
   const removedSyncStatus = Object.hasOwn(state.remoteWorkspaceSyncStatusByTargetId, targetId)
@@ -225,6 +227,7 @@ export function buildRemovedSshTargetCleanupPatch(
     removedTransientClearBlock ||
     removedConnectionState ||
     removedLabel ||
+    removedHost ||
     removedHydrated ||
     removedSyncStatus ||
     removedPortForwards ||
@@ -247,6 +250,7 @@ export function buildRemovedSshTargetCleanupPatch(
       : {}),
     ...(removedConnectionState ? { sshConnectionStates: nextConnectionStates } : {}),
     ...(removedLabel ? { sshTargetLabels: nextLabels } : {}),
+    ...(removedHost ? { sshTargetHosts: nextHosts } : {}),
     ...(removedHydrated ? { remoteWorkspaceHydratedTargetIds: nextHydrated } : {}),
     ...(removedSyncStatus ? { remoteWorkspaceSyncStatusByTargetId: nextSyncStatus } : {}),
     ...(removedPortForwards ? { portForwardsByConnection: nextPortForwards } : {}),

@@ -4,6 +4,7 @@ import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 
 type SeededSessions = {
   worktreeId: string
+  worktreePath: string
   firstTabId: string
   secondTabId: string
   thirdTabId: string
@@ -88,6 +89,7 @@ async function seedProjectTerminalSessions(page: Page): Promise<SeededSessions> 
     }))
     return {
       worktreeId: worktree.id,
+      worktreePath: worktree.path,
       firstTabId: first.id,
       secondTabId: second.id,
       thirdTabId: third.id
@@ -106,6 +108,17 @@ test('manages project terminal groups in the right sidebar with live AI state', 
 
   await expect(manager).toBeVisible()
   await expect(sessions).toHaveCount(3)
+  const sessionLocations = manager.locator('[data-terminal-manager-session-location="true"]')
+  await expect(sessionLocations).toHaveCount(3)
+  await expect(sessionLocations.first()).toContainText('localhost ·')
+  const normalizedWorktreePath = seeded.worktreePath.replace(/[\\/]+$/, '')
+  const finalSeparatorIndex = Math.max(
+    normalizedWorktreePath.lastIndexOf('/'),
+    normalizedWorktreePath.lastIndexOf('\\')
+  )
+  await expect(sessionLocations.first()).toContainText(
+    normalizedWorktreePath.slice(finalSeparatorIndex + 1)
+  )
   await expect(manager.getByRole('checkbox')).toHaveCount(0)
   await expect(manager.getByText('Codex implementation', { exact: true })).toBeVisible()
   await expect(manager.getByText('Tests', { exact: true })).toBeVisible()

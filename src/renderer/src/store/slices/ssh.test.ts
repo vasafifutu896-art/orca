@@ -75,6 +75,10 @@ describe('createSshSlice', () => {
         [targetId, 'Removed target'],
         [otherTargetId, 'Other target']
       ]),
+      sshTargetHosts: new Map([
+        [targetId, '203.0.113.10'],
+        [otherTargetId, '203.0.113.20']
+      ]),
       remoteWorkspaceHydratedTargetIds: new Set([targetId, otherTargetId]),
       remoteWorkspaceSyncStatusByTargetId: {
         [targetId]: { phase: 'offline' },
@@ -170,6 +174,7 @@ describe('createSshSlice', () => {
     const state = store.getState()
     expect(state.sshConnectionStates.has(targetId)).toBe(false)
     expect(state.sshTargetLabels.has(targetId)).toBe(false)
+    expect(state.sshTargetHosts.has(targetId)).toBe(false)
     expect(state.remoteWorkspaceHydratedTargetIds.has(targetId)).toBe(false)
     expect(state.remoteWorkspaceSyncStatusByTargetId[targetId]).toBeUndefined()
     expect(state.portForwardsByConnection[targetId]).toBeUndefined()
@@ -203,6 +208,7 @@ describe('createSshSlice', () => {
 
     expect(state.sshConnectionStates.get(otherTargetId)?.status).toBe('connected')
     expect(state.sshTargetLabels.get(otherTargetId)).toBe('Other target')
+    expect(state.sshTargetHosts.get(otherTargetId)).toBe('203.0.113.20')
     expect(state.remoteWorkspaceHydratedTargetIds.has(otherTargetId)).toBe(true)
     expect(state.remoteWorkspaceSyncStatusByTargetId[otherTargetId]).toEqual({ phase: 'synced' })
     expect(state.portForwardsByConnection[otherTargetId]).toHaveLength(1)
@@ -321,13 +327,24 @@ describe('createSshSlice', () => {
   it('keeps SSH target label references stable when refreshed metadata is unchanged', () => {
     const store = createTestStore()
     const labels = new Map([['ssh-1', 'Remote']])
-    store.setState({ sshTargetLabels: labels, sshTargetsHydrated: true })
+    const hosts = new Map([['ssh-1', '203.0.113.42']])
+    store.setState({ sshTargetLabels: labels, sshTargetHosts: hosts, sshTargetsHydrated: true })
     const previousState = store.getState()
 
-    store.getState().setSshTargetsMetadata([{ id: 'ssh-1', label: 'Remote' }])
+    store.getState().setSshTargetsMetadata([{ id: 'ssh-1', label: 'Remote', host: '203.0.113.42' }])
 
     expect(store.getState()).toBe(previousState)
     expect(store.getState().sshTargetLabels).toBe(labels)
+    expect(store.getState().sshTargetHosts).toBe(hosts)
+  })
+
+  it('refreshes the configured SSH host even when the label is unchanged', () => {
+    const store = createTestStore()
+    store.getState().setSshTargetsMetadata([{ id: 'ssh-1', label: 'Remote', host: '203.0.113.42' }])
+
+    store.getState().setSshTargetsMetadata([{ id: 'ssh-1', label: 'Remote', host: '203.0.113.99' }])
+
+    expect(store.getState().sshTargetHosts.get('ssh-1')).toBe('203.0.113.99')
   })
 
   it('marks targets hydrated on the first load, even when the list is empty', () => {

@@ -33,6 +33,10 @@ export type SshSlice = {
   /** Maps target IDs to their user-facing labels. Populated during hydration
    * so components can look up labels without per-component IPC calls. */
   sshTargetLabels: Map<string, string>
+  /** Maps target IDs to their configured network host (IP or hostname).
+   * Kept separately from labels so compact session surfaces can identify the
+   * actual server without issuing their own listTargets IPC request. */
+  sshTargetHosts: Map<string, string>
   /** Maps REMOVED target IDs to their last known label (from re-adoption
    * tombstones). Lets ghost-host UI show a friendly name instead of the raw id
    * for a workspace still pinned to a deleted target. */
@@ -60,7 +64,9 @@ export type SshSlice = {
   setSshConnectionState: (targetId: string, state: SshConnectionState) => void
   setSshTargetLabels: (labels: Map<string, string>) => void
   setRemovedSshTargetLabels: (labels: Record<string, string>) => void
-  setSshTargetsMetadata: (targets: Pick<SshTarget, 'id' | 'label'>[]) => void
+  setSshTargetsMetadata: (
+    targets: (Pick<SshTarget, 'id' | 'label'> & Partial<Pick<SshTarget, 'host'>>)[]
+  ) => void
   clearRemovedSshTargetState: (targetId: string) => void
   markRemoteWorkspaceHydrated: (targetId: string) => void
   clearRemoteWorkspaceHydrated: (targetId: string) => void
@@ -85,6 +91,7 @@ function advanceLocalSshTargetConnectionGeneration(targetId: string): void {
 export const createSshSlice: StateCreator<AppState, [], [], SshSlice> = (set) => ({
   sshConnectionStates: new Map(),
   sshTargetLabels: new Map(),
+  sshTargetHosts: new Map(),
   removedSshTargetLabels: new Map(),
   sshTargetsHydrated: false,
   remoteWorkspaceHydratedTargetIds: new Set(),
@@ -123,13 +130,23 @@ export const createSshSlice: StateCreator<AppState, [], [], SshSlice> = (set) =>
     set({ removedSshTargetLabels: new Map(Object.entries(labels)) }),
   setSshTargetsMetadata: (targets) =>
     set((s) => {
-      if (sshTargetLabelsEqual(s.sshTargetLabels, targets)) {
+      const nextHosts = new Map(
+        targets.flatMap((target) => {
+          const host = target.host?.trim()
+          return host ? ([[target.id, host]] as const) : []
+        })
+      )
+      const hostsEqual =
+        s.sshTargetHosts.size === nextHosts.size &&
+        [...nextHosts].every(([targetId, host]) => s.sshTargetHosts.get(targetId) === host)
+      if (sshTargetLabelsEqual(s.sshTargetLabels, targets) && hostsEqual) {
         // Why: an unchanged (even empty) list is still a successful load — the
         // hydration flag must flip on the first fetch of an empty target set.
         return s.sshTargetsHydrated ? s : { sshTargetsHydrated: true }
       }
       return {
         sshTargetLabels: new Map(targets.map((target) => [target.id, target.label])),
+        sshTargetHosts: nextHosts,
         sshTargetsHydrated: true
       }
     }),

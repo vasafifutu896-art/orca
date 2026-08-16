@@ -25,7 +25,10 @@ const tab: TerminalTab = {
   createdAt: 1
 }
 
-function renderButton(workingDirectory: string | null): ReturnType<typeof render> {
+function renderButton(
+  workingDirectory: string | null,
+  host = '203.0.113.42'
+): ReturnType<typeof render> {
   return render(
     <TooltipProvider>
       <TerminalManagerSessionButton
@@ -40,7 +43,7 @@ function renderButton(workingDirectory: string | null): ReturnType<typeof render
         showUnreadActivity={false}
         tab={tab}
         tabAgent={null}
-        workingDirectory={workingDirectory}
+        location={{ cwd: workingDirectory, host }}
       />
     </TooltipProvider>
   )
@@ -52,19 +55,22 @@ describe('TerminalManagerSessionButton', () => {
     renderButton('/Users/ada/repo/packages/api')
 
     expect(screen.getByText('API documentation')).toBeInTheDocument()
-    expect(screen.getByText('…/packages/api')).toHaveAttribute(
-      'data-terminal-manager-session-cwd',
-      'true'
+    const location = screen.getByText('203.0.113.42 · …/packages/api')
+    expect(location).toHaveAttribute('data-terminal-manager-session-cwd', 'true')
+    expect(screen.getByRole('button', { name: 'API documentation' })).toHaveAccessibleDescription(
+      '203.0.113.42 · /Users/ada/repo/packages/api'
     )
 
     await user.hover(screen.getByRole('button', { name: 'API documentation' }))
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('/Users/ada/repo/packages/api')
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      '203.0.113.42 · /Users/ada/repo/packages/api'
+    )
   })
 
   it('updates the cwd line without changing the session button identity', () => {
     const view = renderButton('C:\\work\\orca\\apps\\web')
     const button = screen.getByRole('button', { name: 'API documentation' })
-    expect(screen.getByText('…\\apps\\web')).toBeInTheDocument()
+    expect(screen.getByText('203.0.113.42 · …\\apps\\web')).toBeInTheDocument()
 
     view.rerender(
       <TooltipProvider>
@@ -80,13 +86,49 @@ describe('TerminalManagerSessionButton', () => {
           showUnreadActivity={false}
           tab={tab}
           tabAgent={null}
-          workingDirectory="C:\\work\\orca\\services\\api"
+          location={{ cwd: 'C:\\work\\orca\\services\\api', host: '203.0.113.42' }}
         />
       </TooltipProvider>
     )
 
     expect(screen.getByRole('button', { name: 'API documentation' })).toBe(button)
-    expect(screen.getByText('…\\services\\api')).toBeInTheDocument()
+    expect(screen.getByText('203.0.113.42 · …\\services\\api')).toBeInTheDocument()
+  })
+
+  it('keeps the server and second line visible while the cwd is being resolved', () => {
+    const view = renderButton(null)
+    const button = screen.getByRole('button', { name: 'API documentation' })
+    expect(
+      screen.getByText('203.0.113.42 · …', {
+        selector: '[data-terminal-manager-session-location="true"]'
+      })
+    ).toHaveAttribute('data-terminal-manager-session-location', 'true')
+
+    view.rerender(
+      <TooltipProvider>
+        <TerminalManagerSessionButton
+          activityStatus="inactive"
+          displayTitle="API documentation"
+          isActive={false}
+          isPinned={false}
+          isSelected={false}
+          onAuxClick={vi.fn()}
+          onClick={vi.fn()}
+          onDoubleClick={vi.fn()}
+          showUnreadActivity={false}
+          tab={tab}
+          tabAgent={null}
+          location={{ cwd: '/srv/noonoo', host: '203.0.113.42' }}
+        />
+      </TooltipProvider>
+    )
+
+    expect(screen.getByRole('button', { name: 'API documentation' })).toBe(button)
+    expect(
+      screen.getByText('203.0.113.42 · /srv/noonoo', {
+        selector: '[data-terminal-manager-session-location="true"]'
+      })
+    ).toBeInTheDocument()
   })
 
   it('preserves selection state and forwards the existing session gestures', () => {
@@ -107,7 +149,7 @@ describe('TerminalManagerSessionButton', () => {
           showUnreadActivity={false}
           tab={tab}
           tabAgent={null}
-          workingDirectory="/repo/packages/api"
+          location={{ cwd: '/repo/packages/api', host: 'localhost' }}
         />
       </TooltipProvider>
     )

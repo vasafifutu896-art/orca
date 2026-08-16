@@ -29,6 +29,7 @@ import { TerminalManagerSessionCloseButton } from './TerminalManagerSessionClose
 import { TerminalManagerSessionButton } from './TerminalManagerSessionButton'
 import { TerminalManagerSessionContextMenu } from './TerminalManagerSessionContextMenu'
 import { useTerminalManagerInlineRenameFocus } from './use-terminal-manager-inline-rename-focus'
+import type { TerminalManagerSessionLocation } from './terminal-manager-session-location'
 
 type Props = {
   groupId: string | null
@@ -38,7 +39,7 @@ type Props = {
   onMove: (sessionId: string, groupId: string | null, beforeSessionId?: string) => void
   onSelect: (sessionId: string, gesture: TerminalManagerSelectionGesture) => void
   session: WorktreeTerminalSession
-  workingDirectory: string | null
+  location: TerminalManagerSessionLocation
 }
 
 export function TerminalManagerSessionRow({
@@ -49,7 +50,7 @@ export function TerminalManagerSessionRow({
   onMove,
   onSelect,
   session,
-  workingDirectory
+  location
 }: Props): React.JSX.Element {
   const { tab, unifiedTab } = session
   const generatedTitlesEnabled = useAppStore(
@@ -213,7 +214,7 @@ export function TerminalManagerSessionRow({
           showUnreadActivity={showUnreadActivity}
           tab={tab}
           tabAgent={tabAgent}
-          workingDirectory={workingDirectory}
+          location={location}
           onClick={(event) => {
             const additive = event.ctrlKey || event.metaKey
             const range = event.shiftKey

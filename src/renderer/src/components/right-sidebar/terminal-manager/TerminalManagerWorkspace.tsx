@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
+import { useShallow } from 'zustand/react/shallow'
 import type { TerminalTab } from '../../../../../shared/terminal-tab-types'
 import { translate } from '@/i18n/i18n'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { getResolvedExecutionHostIdForWorktree } from '@/lib/resolved-worktree-execution-host'
 import { useAppStore } from '@/store'
 import { createWorktreeTerminalSession } from '../../sidebar/worktree-terminal-session-activation'
 import {
@@ -26,6 +28,11 @@ import { useTerminalManagerDnd } from './use-terminal-manager-dnd'
 import { useTerminalManagerLayout } from './use-terminal-manager-layout'
 import { useTerminalManagerSelection } from './use-terminal-manager-selection'
 import { useTerminalManagerWorkingDirectories } from './use-terminal-manager-working-directories'
+import { resolveChecksPanelTerminalPtyId } from '../checks-panel-terminal-worktree'
+import {
+  resolveTerminalManagerSessionHost,
+  type TerminalManagerSessionLocation
+} from './terminal-manager-session-location'
 
 const EMPTY_TERMINAL_TABS: readonly TerminalTab[] = []
 const EMPTY_UNIFIED_TABS = [] as const
@@ -48,7 +55,16 @@ export function TerminalManagerWorkspace({
       ? state.activeTabId
       : null
   )
-  const worktree = useAppStore((state) => state.getKnownWorktreeById(worktreeId) ?? null)
+  const executionHostId = useAppStore((state) =>
+    getResolvedExecutionHostIdForWorktree(state, worktreeId)
+  )
+  const worktree = useAppStore(
+    (state) => state.getKnownWorktreeById(worktreeId, executionHostId ?? undefined) ?? null
+  )
+  const sshTargetHosts = useAppStore((state) => state.sshTargetHosts)
+  const sshTargetLabels = useAppStore((state) => state.sshTargetLabels)
+  const runtimeSshTargets = useAppStore((state) => state.sshStateByEnvironment)
+  const runtimeEnvironments = useAppStore((state) => state.runtimeEnvironments)
   const completionNotificationsEnabled = useAppStore(
     (state) =>
       state.settings?.notifications.enabled === true &&
@@ -57,6 +73,21 @@ export function TerminalManagerWorkspace({
   const sessions = useMemo(
     () => orderWorktreeTerminalSessions(terminalTabs, unifiedTabs, tabGroups),
     [tabGroups, terminalTabs, unifiedTabs]
+  )
+  const sessionPtyIds = useAppStore(
+    useShallow((state) =>
+      sessions.map(
+        (session) =>
+          resolveChecksPanelTerminalPtyId({
+            activeTabId: session.tab.id,
+            ptyIdsByTabId: state.ptyIdsByTabId,
+            terminalLayoutsByTabId: state.terminalLayoutsByTabId
+          }) ??
+          session.tab.ptyId ??
+          state.lastKnownRelayPtyIdByTabId[session.tab.id] ??
+          null
+      )
+    )
   )
   const sessionIds = useMemo(() => sessions.map((session) => session.tab.id), [sessions])
   const sessionById = useMemo(
@@ -70,6 +101,35 @@ export function TerminalManagerWorkspace({
     sessions,
     worktreePath: worktree?.path ?? null
   })
+  const locationBySessionId = useMemo<ReadonlyMap<string, TerminalManagerSessionLocation>>(
+    () =>
+      new Map(
+        sessions.map((session, index) => [
+          session.tab.id,
+          {
+            cwd: workingDirectoryBySessionId.get(session.tab.id) ?? null,
+            host: resolveTerminalManagerSessionHost({
+              executionHostId,
+              ptyId: sessionPtyIds[index] ?? null,
+              runtimeEnvironments,
+              runtimeSshTargets,
+              sshTargetHosts,
+              sshTargetLabels
+            })
+          }
+        ])
+      ),
+    [
+      executionHostId,
+      runtimeEnvironments,
+      runtimeSshTargets,
+      sessionPtyIds,
+      sessions,
+      sshTargetHosts,
+      sshTargetLabels,
+      workingDirectoryBySessionId
+    ]
+  )
   const visualSessionIds = useMemo(
     () => [
       ...layout.groups.flatMap((group) => sessionsForTerminalManagerGroup(layout, group.id)),
@@ -181,7 +241,7 @@ export function TerminalManagerWorkspace({
               collapsed={group.collapsed}
               sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, group.id))}
               groups={layout.groups}
-              workingDirectoryBySessionId={workingDirectoryBySessionId}
+              locationBySessionId={locationBySessionId}
               activeTerminalTabId={activeTerminalTabId}
               groupIndex={index}
               isSessionSelected={selection.isSelected}
@@ -205,7 +265,7 @@ export function TerminalManagerWorkspace({
             collapsed={layout.ungroupedCollapsed}
             sessions={resolveSessions(sessionsForTerminalManagerGroup(layout, null))}
             groups={layout.groups}
-            workingDirectoryBySessionId={workingDirectoryBySessionId}
+            locationBySessionId={locationBySessionId}
             activeTerminalTabId={activeTerminalTabId}
             groupIndex={layout.groups.length}
             isSessionSelected={selection.isSelected}

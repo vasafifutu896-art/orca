@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   poll: vi.fn(),
   state: {
     ptyIdsByTabId: { 'tab-1': ['pty-1'] } as Record<string, string[]>,
+    lastKnownRelayPtyIdByTabId: {} as Record<string, string>,
     terminalLayoutsByTabId: {
       'tab-1': {
         root: null,
@@ -69,6 +70,8 @@ describe('useTerminalManagerWorkingDirectories', () => {
     mocks.paneCwds = {}
     mocks.polledCwds = {}
     mocks.poll.mockReset()
+    mocks.state.ptyIdsByTabId = { 'tab-1': ['pty-1'] }
+    mocks.state.lastKnownRelayPtyIdByTabId = {}
   })
 
   afterEach(cleanup)
@@ -135,5 +138,24 @@ describe('useTerminalManagerWorkingDirectories', () => {
     expect(mocks.poll).toHaveBeenLastCalledWith([
       { tabId: 'tab-1', ptyId: 'pty-1', priority: true }
     ])
+  })
+
+  it('uses the retained tab pty when the live pty map has not hydrated yet', () => {
+    mocks.state.ptyIdsByTabId = {}
+    mocks.polledCwds = { 'tab-1': { ptyId: 'pty-1', cwd: '/srv/noonoo' } }
+    const layout = createEmptyTerminalManagerLayout(['tab-1'])
+    const { result } = renderHook(() =>
+      useTerminalManagerWorkingDirectories({
+        activeTerminalTabId: 'tab-1',
+        layout,
+        sessions,
+        worktreePath: null
+      })
+    )
+
+    expect(mocks.poll).toHaveBeenLastCalledWith([
+      { tabId: 'tab-1', ptyId: 'pty-1', priority: true }
+    ])
+    expect(result.current.get('tab-1')).toBe('/srv/noonoo')
   })
 })

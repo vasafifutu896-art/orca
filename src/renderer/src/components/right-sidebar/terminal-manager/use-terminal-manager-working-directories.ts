@@ -26,12 +26,16 @@ export function useTerminalManagerWorkingDirectories(args: {
 }): ReadonlyMap<string, string | null> {
   const sessionPtyIds = useAppStore(
     useShallow((state) =>
-      args.sessions.map((session) =>
-        resolveChecksPanelTerminalPtyId({
-          activeTabId: session.tab.id,
-          ptyIdsByTabId: state.ptyIdsByTabId,
-          terminalLayoutsByTabId: state.terminalLayoutsByTabId
-        })
+      args.sessions.map(
+        (session) =>
+          resolveChecksPanelTerminalPtyId({
+            activeTabId: session.tab.id,
+            ptyIdsByTabId: state.ptyIdsByTabId,
+            terminalLayoutsByTabId: state.terminalLayoutsByTabId
+          }) ??
+          session.tab.ptyId ??
+          state.lastKnownRelayPtyIdByTabId[session.tab.id] ??
+          null
       )
     )
   )

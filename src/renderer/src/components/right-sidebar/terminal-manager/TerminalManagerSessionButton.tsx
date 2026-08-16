@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TerminalTabLeadingIcon } from '../../tab-bar/TerminalTabLeadingIcon'
 import type { TerminalTabActivityStatus } from '../../tab-bar/terminal-tab-activity-status'
-import { formatTerminalManagerWorkingDirectory } from './terminal-manager-session-cwd'
+import {
+  formatFullTerminalManagerSessionLocation,
+  formatTerminalManagerSessionLocation,
+  type TerminalManagerSessionLocation
+} from './terminal-manager-session-location'
 
 type Props = {
   activityStatus: TerminalTabActivityStatus
@@ -20,7 +24,7 @@ type Props = {
   showUnreadActivity: boolean
   tab: TerminalTab
   tabAgent: TuiAgent | null
-  workingDirectory: string | null
+  location: TerminalManagerSessionLocation
 }
 
 export function TerminalManagerSessionButton({
@@ -35,18 +39,21 @@ export function TerminalManagerSessionButton({
   showUnreadActivity,
   tab,
   tabAgent,
-  workingDirectory
+  location
 }: Props): React.JSX.Element {
-  const compactWorkingDirectory = formatTerminalManagerWorkingDirectory(workingDirectory)
+  const compactLocation = formatTerminalManagerSessionLocation(location)
+  const fullLocation = formatFullTerminalManagerSessionLocation(location)
+  const locationDescriptionId = `terminal-manager-session-location-${tab.id}`
   const button = (
     <Button
       type="button"
       variant="ghost"
       size="sm"
-      className="h-10 min-w-0 flex-1 items-start justify-start gap-0 rounded-md px-1.5 py-1 text-xs font-normal hover:bg-transparent"
+      className="h-auto min-h-10 min-w-0 flex-1 items-start justify-start gap-0 rounded-md px-1.5 py-1 text-xs font-normal hover:bg-transparent"
       aria-current={isActive ? 'page' : undefined}
       aria-pressed={isSelected}
       aria-label={displayTitle}
+      aria-describedby={locationDescriptionId}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onAuxClick={onAuxClick}
@@ -63,14 +70,16 @@ export function TerminalManagerSessionButton({
       </span>
       <span className="min-w-0 flex-1 text-left">
         <span className="block truncate leading-4">{displayTitle}</span>
-        {compactWorkingDirectory ? (
-          <span
-            className="block truncate font-mono text-[11px] leading-4 text-foreground/70"
-            data-terminal-manager-session-cwd="true"
-          >
-            {compactWorkingDirectory}
-          </span>
-        ) : null}
+        <span
+          className="block truncate font-mono text-[11px] leading-4 text-foreground/70"
+          data-terminal-manager-session-cwd="true"
+          data-terminal-manager-session-location="true"
+        >
+          {compactLocation}
+        </span>
+        <span id={locationDescriptionId} className="sr-only">
+          {fullLocation}
+        </span>
       </span>
       {tab.color ? (
         <span
@@ -82,14 +91,11 @@ export function TerminalManagerSessionButton({
     </Button>
   )
 
-  if (!workingDirectory) {
-    return button
-  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent side="top" sideOffset={4} className="max-w-sm break-all font-mono text-xs">
-        {workingDirectory}
+        {fullLocation}
       </TooltipContent>
     </Tooltip>
   )

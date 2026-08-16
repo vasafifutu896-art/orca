@@ -7,6 +7,7 @@ import type { TerminalManagerGroup } from './terminal-manager-layout'
 import type { TerminalManagerSelectionGesture } from './terminal-manager-selection'
 import { TerminalManagerGroupHeader } from './TerminalManagerGroupHeader'
 import { TerminalManagerSessionRow } from './TerminalManagerSessionRow'
+import type { TerminalManagerSessionLocation } from './terminal-manager-session-location'
 
 type Props = {
   activeTerminalTabId: string | null
@@ -22,7 +23,7 @@ type Props = {
   onSelectSession: (sessionId: string, gesture: TerminalManagerSelectionGesture) => void
   onToggle: (groupId: string | null) => void
   sessions: readonly WorktreeTerminalSession[]
-  workingDirectoryBySessionId: ReadonlyMap<string, string | null>
+  locationBySessionId: ReadonlyMap<string, TerminalManagerSessionLocation>
 }
 
 export function TerminalManagerGroupSection({
@@ -39,7 +40,7 @@ export function TerminalManagerGroupSection({
   onSelectSession,
   onToggle,
   sessions,
-  workingDirectoryBySessionId
+  locationBySessionId
 }: Props): React.JSX.Element {
   const groupId = group?.id ?? null
   const dropData: TerminalManagerDropData = {
@@ -83,7 +84,9 @@ export function TerminalManagerGroupSection({
                 isSelected={isSessionSelected(session.tab.id)}
                 groupId={groupId}
                 groups={groups}
-                workingDirectory={workingDirectoryBySessionId.get(session.tab.id) ?? null}
+                location={
+                  locationBySessionId.get(session.tab.id) ?? { cwd: null, host: 'localhost' }
+                }
                 onMove={onMoveSession}
                 onSelect={onSelectSession}
               />
