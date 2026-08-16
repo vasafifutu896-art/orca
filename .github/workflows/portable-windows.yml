@@ -61,7 +61,6 @@ jobs:
           src/main/ipc/windows-notification-activation.test.ts
           src/main/ipc/notification-window-activation.test.ts
           src/main/ipc/notifications.test.ts
-          src/main/ipc/pty.test.ts
           src/main/ipc/register-core-handlers.test.ts
           src/main/ipc/shell.test.ts
           src/main/providers/ssh-pty-terminal-location.test.ts

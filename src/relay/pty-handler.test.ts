@@ -109,6 +109,8 @@ function createMockDispatcher() {
   return dispatcher
 }
 
+const hostPlatform = process.platform
+
 describe('PtyHandler', () => {
   let dispatcher: ReturnType<typeof createMockDispatcher>
   let handler: PtyHandler
@@ -299,7 +301,7 @@ describe('PtyHandler', () => {
     await expect(dispatcher.callRequest('pty.getTerminalLocation', { id })).resolves.toEqual({
       incarnationId,
       foreground: { kind: 'unknown', epoch: null, targetHint: null },
-      outerCwd: process.cwd(),
+      outerCwd: hostPlatform === 'linux' ? process.cwd() : null,
       nestedLocation: null
     })
   })

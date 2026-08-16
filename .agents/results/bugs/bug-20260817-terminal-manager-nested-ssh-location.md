@@ -59,15 +59,15 @@ they never become file, execution, upload, or routing authority.
 ## Verification
 
 - Final tracker/renderer integration suite: 5 files, 190 tests passed.
-- Windows-workflow-equivalent Vitest suite: 48 files passed, 1 platform-skipped; 1,352 tests
-  passed and 11 platform-specific tests skipped on Linux.
+- Windows-workflow-equivalent Vitest suite: 47 files passed, 1 platform-skipped; 870 tests passed
+  and 11 platform-specific tests skipped on Linux.
 - Terminal Manager Electron E2E passed, including the two-line location row and rename/selection
   interaction coverage.
 - Node and renderer TypeScript checks passed with Node 24.
 - Changed-code native, type-aware, and React quality gates passed with zero new findings.
 - Relay bundles built successfully for all configured OS/architecture targets and WSL.
 - Windows portable CI now includes the new observation, foreground probe, relay tracker, provider,
-  IPC, and Terminal Manager regression suites.
+  and Terminal Manager regression suites.
 
 Known physical limit: the outer machine cannot infer an inner shell's live CWD if that shell emits
 neither OSC 7 nor a recognizable title. In that case Orca shows an unknown path instead of falsely
