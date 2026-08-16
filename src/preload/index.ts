@@ -112,6 +112,7 @@ import type {
 import type { GitPushTarget, WorktreeHeadIdentity } from '../shared/worktree/types'
 import type { PtyModelRestoreNeededEvent } from '../shared/pty-model-restore-marker'
 import type { PtyListedSession } from '../shared/pty-listed-session'
+import type { PtyTerminalLocationReadResult } from '../shared/pty-terminal-location'
 import type {
   PtyRendererDeliveryHealthReply,
   PtyRendererDeliveryStateReport
@@ -1164,6 +1165,10 @@ const api = {
 
     /** Resolve a PTY's live cwd via `/proc` (Linux) or `lsof` (macOS); `''` when unknown or unresolvable. */
     getCwd: (id: string): Promise<string> => ipcRenderer.invoke('pty:getCwd', { id }),
+
+    /** Resolve structured outer/nested SSH display location evidence when the provider supports it. */
+    getTerminalLocation: (id: string): Promise<PtyTerminalLocationReadResult> =>
+      ipcRenderer.invoke('pty:getTerminalLocation', { id }),
 
     /** The PTY's last APPLIED size (real winsize), or null if unknown — lets the renderer detect drift after a dropped resize and re-assert. */
     getSize: (id: string): Promise<{ cols: number; rows: number } | null> =>

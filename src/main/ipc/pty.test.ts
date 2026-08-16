@@ -678,6 +678,43 @@ describe('registerPtyHandlers', () => {
     return spawn
   }
 
+  it('returns provider terminal-location evidence through fail-closed IPC', async () => {
+    const probe = {
+      incarnationId: 'incarnation-1',
+      foreground: { kind: 'ssh', epoch: '22:9', targetHint: 'inner.example' },
+      outerCwd: '/root',
+      nestedLocation: {
+        cwd: '/home/user/project',
+        host: 'inner.example',
+        source: 'osc7' as const,
+        outputSeq: 9
+      }
+    }
+    const getTerminalLocation = vi.fn().mockResolvedValue({ status: 'available', probe })
+    installDaemonTestProvider({ getTerminalLocation })
+    registerPtyHandlers(mainWindow as never)
+
+    await expect(
+      handlers.get('pty:getTerminalLocation')!(null, { id: 'local-pty' })
+    ).resolves.toEqual({ status: 'available', probe })
+    expect(getTerminalLocation).toHaveBeenCalledWith('local-pty')
+  })
+
+  it('distinguishes unavailable terminal-location evidence from unsupported providers', async () => {
+    installDaemonTestProvider({ getTerminalLocation: vi.fn().mockRejectedValue(new Error('gone')) })
+    registerPtyHandlers(mainWindow as never)
+
+    await expect(
+      handlers.get('pty:getTerminalLocation')!(null, { id: 'local-pty' })
+    ).resolves.toEqual({ status: 'unavailable' })
+
+    installDaemonTestProvider()
+    registerPtyHandlers(mainWindow as never)
+    await expect(
+      handlers.get('pty:getTerminalLocation')!(null, { id: 'local-pty' })
+    ).resolves.toEqual({ status: 'unsupported' })
+  })
+
   function installObservableDaemonTestProvider() {
     const spawn = vi.fn(async (options: { sessionId?: string }) => ({
       id: options.sessionId ?? 'daemon-pty'

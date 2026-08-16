@@ -3278,6 +3278,8 @@ function createPtyApi(): NonNullable<Partial<PreloadApi>['pty']> {
     // Why: paired web panes cannot provide a local post-boundary process scan.
     confirmForegroundProcess: () => Promise.resolve(null),
     getCwd: () => Promise.resolve('~'),
+    // Web PTYs have no desktop provider/relay location probe.
+    getTerminalLocation: () => Promise.resolve({ status: 'unsupported' as const }),
     getSize: () => Promise.resolve(null),
     listSessions: () => Promise.resolve([]),
     getAuthoritativeBufferSnapshotCapabilities: (ids) =>

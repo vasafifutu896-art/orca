@@ -61,16 +61,24 @@ jobs:
           src/main/ipc/windows-notification-activation.test.ts
           src/main/ipc/notification-window-activation.test.ts
           src/main/ipc/notifications.test.ts
+          src/main/ipc/pty.test.ts
           src/main/ipc/register-core-handlers.test.ts
           src/main/ipc/shell.test.ts
+          src/main/providers/ssh-pty-terminal-location.test.ts
           src/main/powershell-osc133-bootstrap.test.ts
           src/main/powershell-osc133-bootstrap-windows-clm.test.ts
           src/main/window/attach-main-window-services.test.ts
+          src/main/daemon/osc7-uri-extraction.test.ts
           src/main/ipc/filesystem-import-ssh.test.ts
           src/main/ipc/filesystem-import-ssh-ops.test.ts
           src/main/ipc/filesystem-import-ssh-path-safety.test.ts
+          src/relay/pty-handler.test.ts
           src/relay/pty-process-cwd.test.ts
+          src/relay/pty-terminal-location-tracker.test.ts
+          src/shared/agent-detection.test.ts
           src/shared/native-file-drop.test.ts
+          src/shared/pty-terminal-location-observation.test.ts
+          src/shared/ssh-command-target.test.ts
           src/main/daemon/daemon-host-relocation.test.ts
           src/renderer/src/hooks/useIpcEvents.test.ts
           src/renderer/src/hooks/use-notification-activation-ready.test.ts

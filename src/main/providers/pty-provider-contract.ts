@@ -10,6 +10,7 @@ import type {
   AgentSessionSurfaceBinding
 } from '../../shared/agent-session-host-authority'
 import type { PtyProcessInfo } from './pty-process-info'
+import type { PtyTerminalLocationReadResult } from '../../shared/pty-terminal-location'
 
 export type {
   PtyBackgroundStreamEvent,
@@ -189,6 +190,12 @@ export type IPtyProvider = {
   ): Promise<void>
   sendSignal(id: string, signal: string): Promise<void>
   getCwd(id: string): Promise<string>
+  /**
+   * Structured display-only location evidence for terminals that may have an
+   * interactive SSH client in the foreground. Optional for legacy/local
+   * providers that cannot distinguish an outer cwd from a nested SSH cwd.
+   */
+  getTerminalLocation?: (id: string) => Promise<PtyTerminalLocationReadResult>
   getInitialCwd(id: string): Promise<string>
   clearBuffer(id: string): Promise<void>
   /** Ordered handoff from startup source authority to the live/hidden view authority. */

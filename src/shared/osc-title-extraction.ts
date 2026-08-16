@@ -7,8 +7,15 @@ const OSC_TITLE_COMMANDS = new Set([0x30, 0x31, 0x32])
 export const MAX_OSC_TITLE_CHARS = 1024
 export const MAX_OSC_TITLES_PER_CHUNK = 4096
 
+export type ExtractedOscTitle = {
+  endIndex: number
+  index: number
+  title: string
+  truncated: boolean
+}
+
 type OscTitleParseResult =
-  | { kind: 'title'; title: string; nextIndex: number }
+  | { kind: 'title'; nextIndex: number; index: number; title: string; truncated: boolean }
   | { kind: 'invalid'; nextIndex: number }
   | { kind: 'incomplete' }
 
@@ -36,7 +43,8 @@ function parseOscTitleAt(data: string, index: number): OscTitleParseResult {
     if (code === BEL_CODE_UNIT) {
       return {
         kind: 'title',
-        title: readBoundedOscTitle(data, titleStart, cursor),
+        index,
+        ...readBoundedOscTitle(data, titleStart, cursor),
         nextIndex: cursor + 1
       }
     }
@@ -46,7 +54,8 @@ function parseOscTitleAt(data: string, index: number): OscTitleParseResult {
     if (data.charCodeAt(cursor + 1) === BACKSLASH_CODE_UNIT) {
       return {
         kind: 'title',
-        title: readBoundedOscTitle(data, titleStart, cursor),
+        index,
+        ...readBoundedOscTitle(data, titleStart, cursor),
         nextIndex: cursor + 2
       }
     }
@@ -56,19 +65,25 @@ function parseOscTitleAt(data: string, index: number): OscTitleParseResult {
   return { kind: 'incomplete' }
 }
 
-function readBoundedOscTitle(data: string, titleStart: number, titleEnd: number): string {
+function readBoundedOscTitle(
+  data: string,
+  titleStart: number,
+  titleEnd: number
+): Omit<ExtractedOscTitle, 'endIndex' | 'index'> {
   // Why: PTY output can contain pasted or remote-controlled OSC titles; keep
   // downstream title detection bounded while preserving trailing status words.
   const length = titleEnd - titleStart
   if (length <= MAX_OSC_TITLE_CHARS) {
-    return data.slice(titleStart, titleEnd)
+    return { title: data.slice(titleStart, titleEnd), truncated: false }
   }
   const prefixLength = Math.ceil(MAX_OSC_TITLE_CHARS / 2)
   const suffixLength = MAX_OSC_TITLE_CHARS - prefixLength
-  return (
-    data.slice(titleStart, titleStart + prefixLength) +
-    data.slice(titleEnd - suffixLength, titleEnd)
-  )
+  return {
+    title:
+      data.slice(titleStart, titleStart + prefixLength) +
+      data.slice(titleEnd - suffixLength, titleEnd),
+    truncated: true
+  }
 }
 
 export function extractLastOscTitle(data: string): string | null {
@@ -99,12 +114,12 @@ export function extractLastOscTitle(data: string): string | null {
   return last
 }
 
-export function extractAllOscTitles(data: string): string[] {
+export function extractAllOscTitlesWithMetadata(data: string): ExtractedOscTitle[] {
   if (!data.includes('\x1b]')) {
     return []
   }
 
-  const titles: string[] = []
+  const titles: ExtractedOscTitle[] = []
   let oldestTitleIndex = 0
   let searchStart = 0
   while (searchStart < data.length) {
@@ -118,9 +133,19 @@ export function extractAllOscTitles(data: string): string[] {
     }
     if (parsed.kind === 'title') {
       if (titles.length < MAX_OSC_TITLES_PER_CHUNK) {
-        titles.push(parsed.title)
+        titles.push({
+          endIndex: parsed.nextIndex,
+          index: parsed.index,
+          title: parsed.title,
+          truncated: parsed.truncated
+        })
       } else {
-        titles[oldestTitleIndex] = parsed.title
+        titles[oldestTitleIndex] = {
+          endIndex: parsed.nextIndex,
+          index: parsed.index,
+          title: parsed.title,
+          truncated: parsed.truncated
+        }
         oldestTitleIndex = (oldestTitleIndex + 1) % MAX_OSC_TITLES_PER_CHUNK
       }
       searchStart = parsed.nextIndex
@@ -131,4 +156,8 @@ export function extractAllOscTitles(data: string): string[] {
   return oldestTitleIndex === 0
     ? titles
     : [...titles.slice(oldestTitleIndex), ...titles.slice(0, oldestTitleIndex)]
+}
+
+export function extractAllOscTitles(data: string): string[] {
+  return extractAllOscTitlesWithMetadata(data).map(({ title }) => title)
 }

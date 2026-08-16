@@ -2,66 +2,66 @@ import { useEffect, useRef, useState } from 'react'
 import { parseAppSshPtyId } from '../../../../../shared/ssh-pty-id'
 import { installWindowVisibilityInterval, isWindowVisible } from '@/lib/window-visibility-interval'
 import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
-import type { TerminalManagerSessionCwdEntry } from './terminal-manager-session-cwd'
+import {
+  parseTerminalManagerCwdTargets,
+  serializeTerminalManagerCwdTargets,
+  terminalManagerCwdEntryMatchesTarget,
+  terminalManagerCwdTargetKey,
+  type TerminalManagerCwdTarget,
+  type TerminalManagerSessionCwdEntry
+} from './terminal-manager-session-cwd'
 
 const TERMINAL_MANAGER_CWD_POLL_MS = 15_000
 const TERMINAL_MANAGER_ACTIVE_SSH_CWD_POLL_MS = 2_000
 const TERMINAL_MANAGER_CWD_MAX_CONCURRENCY = 2
 
-export type TerminalManagerCwdTarget = {
-  tabId: string
-  ptyId: string
-  priority?: boolean
-}
-
 type TerminalManagerSessionCwds = Readonly<Record<string, TerminalManagerSessionCwdEntry>>
-
-type SerializedTerminalManagerCwdTarget = readonly [tabId: string, ptyId: string, priority: boolean]
-
-function serializeTargets(targets: readonly TerminalManagerCwdTarget[]): string {
-  return JSON.stringify(
-    targets.map(
-      ({ tabId, ptyId, priority }): SerializedTerminalManagerCwdTarget => [
-        tabId,
-        ptyId,
-        Boolean(priority)
-      ]
-    )
-  )
-}
-
-function parseTargets(serializedTargets: string): TerminalManagerCwdTarget[] {
-  return (JSON.parse(serializedTargets) as SerializedTerminalManagerCwdTarget[]).map(
-    ([tabId, ptyId, priority]) => ({ tabId, ptyId, priority })
-  )
-}
 
 export function useTerminalManagerSessionCwds(
   targets: readonly TerminalManagerCwdTarget[]
 ): TerminalManagerSessionCwds {
   const [cwdByTabId, setCwdByTabId] = useState<Record<string, TerminalManagerSessionCwdEntry>>({})
   const mountedRef = useRef(false)
-  const currentPtyByTabIdRef = useRef(new Map<string, string>())
+  const currentTargetKeyByTabIdRef = useRef(new Map<string, string>())
+  const latestCwdByTabIdRef = useRef<Record<string, TerminalManagerSessionCwdEntry>>({})
+  const unavailableMissesByTargetKeyRef = useRef(new Map<string, number>())
   const inFlightTargetsRef = useRef(new Set<string>())
   const drainCurrentInitialQueueRef = useRef<() => void>(() => undefined)
-  const serializedTargets = serializeTargets(targets)
+  const serializedTargets = serializeTerminalManagerCwdTargets(targets)
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      currentPtyByTabIdRef.current.clear()
+      currentTargetKeyByTabIdRef.current.clear()
+      latestCwdByTabIdRef.current = {}
+      unavailableMissesByTargetKeyRef.current.clear()
       drainCurrentInitialQueueRef.current = () => undefined
     }
   }, [])
 
   useEffect(() => {
-    const eligibleTargets = parseTargets(serializedTargets).filter(
+    const eligibleTargets = parseTerminalManagerCwdTargets(serializedTargets).filter(
       (target) => !isRemoteRuntimePtyId(target.ptyId)
     )
-    currentPtyByTabIdRef.current = new Map(
-      eligibleTargets.map((target) => [target.tabId, target.ptyId])
+    currentTargetKeyByTabIdRef.current = new Map(
+      eligibleTargets.map((target) => [target.tabId, terminalManagerCwdTargetKey(target)])
     )
+    const eligibleTargetKeys = new Set(eligibleTargets.map(terminalManagerCwdTargetKey))
+    unavailableMissesByTargetKeyRef.current = new Map(
+      [...unavailableMissesByTargetKeyRef.current].filter(([key]) => eligibleTargetKeys.has(key))
+    )
+    const currentEntries = latestCwdByTabIdRef.current
+    const nextEntries = Object.fromEntries(
+      Object.entries(currentEntries).filter(([tabId, entry]) => {
+        const target = eligibleTargets.find((candidate) => candidate.tabId === tabId)
+        return target ? terminalManagerCwdEntryMatchesTarget(entry, target) : false
+      })
+    )
+    if (Object.keys(nextEntries).length !== Object.keys(currentEntries).length) {
+      latestCwdByTabIdRef.current = nextEntries
+      setCwdByTabId(nextEntries)
+    }
     if (eligibleTargets.length === 0) {
       drainCurrentInitialQueueRef.current = () => undefined
       return
@@ -70,32 +70,135 @@ export function useTerminalManagerSessionCwds(
     let disposed = false
     let initialDrainActive = true
     let pollCursor = 0
-    const targetKey = (target: TerminalManagerCwdTarget): string =>
-      `${target.tabId}\0${target.ptyId}`
+    let fastPollCursor = 0
     const initialQueue = [...eligibleTargets]
       .sort((left, right) => Number(Boolean(right.priority)) - Number(Boolean(left.priority)))
-      .filter((target) => !inFlightTargetsRef.current.has(targetKey(target)))
+      .filter((target) => !inFlightTargetsRef.current.has(terminalManagerCwdTargetKey(target)))
+
+    const isCurrentTarget = (target: TerminalManagerCwdTarget): boolean =>
+      mountedRef.current &&
+      currentTargetKeyByTabIdRef.current.get(target.tabId) === terminalManagerCwdTargetKey(target)
 
     const clearUnavailableDirectSshCwd = (target: TerminalManagerCwdTarget): void => {
+      if (!parseAppSshPtyId(target.ptyId) || !isCurrentTarget(target)) {
+        return
+      }
+      const currentEntries = latestCwdByTabIdRef.current
+      if (!terminalManagerCwdEntryMatchesTarget(currentEntries[target.tabId], target)) {
+        return
+      }
+      const nextEntries = { ...currentEntries }
+      delete nextEntries[target.tabId]
+      latestCwdByTabIdRef.current = nextEntries
+      setCwdByTabId(nextEntries)
+    }
+
+    const updateTarget = (
+      target: TerminalManagerCwdTarget,
+      entry: Omit<TerminalManagerSessionCwdEntry, 'ptyId' | 'connectionGeneration'>
+    ): void => {
+      if (!isCurrentTarget(target)) {
+        return
+      }
+      const currentEntries = latestCwdByTabIdRef.current
+      const prior = currentEntries[target.tabId]
       if (
-        !parseAppSshPtyId(target.ptyId) ||
-        !mountedRef.current ||
-        currentPtyByTabIdRef.current.get(target.tabId) !== target.ptyId
+        terminalManagerCwdEntryMatchesTarget(prior, target) &&
+        prior.cwd === entry.cwd &&
+        prior.hostHint === entry.hostHint &&
+        prior.nestedSsh === entry.nestedSsh
       ) {
         return
       }
-      setCwdByTabId((current) => {
-        if (current[target.tabId]?.ptyId !== target.ptyId) {
-          return current
+      const nextEntry: TerminalManagerSessionCwdEntry = {
+        ptyId: target.ptyId,
+        ...(target.connectionGeneration === undefined
+          ? {}
+          : { connectionGeneration: target.connectionGeneration }),
+        ...entry
+      }
+      const nextEntries = { ...currentEntries, [target.tabId]: nextEntry }
+      latestCwdByTabIdRef.current = nextEntries
+      setCwdByTabId(nextEntries)
+    }
+
+    const readLegacyCwd = async (target: TerminalManagerCwdTarget): Promise<void> => {
+      const cwd = (await window.api.pty.getCwd(target.ptyId)).trim()
+      if (!cwd) {
+        // Why: an unavailable SSH provider is not evidence that its last
+        // successful path is still current; let a newer OSC/static value win.
+        clearUnavailableDirectSshCwd(target)
+        return
+      }
+      updateTarget(target, { cwd })
+    }
+
+    const recordUnavailableTarget = (target: TerminalManagerCwdTarget): void => {
+      if (!isCurrentTarget(target)) {
+        return
+      }
+      const key = terminalManagerCwdTargetKey(target)
+      const previousMisses = unavailableMissesByTargetKeyRef.current.get(key) ?? 0
+      unavailableMissesByTargetKeyRef.current.set(key, previousMisses + 1)
+      const currentEntry = latestCwdByTabIdRef.current[target.tabId]
+      if (
+        previousMisses === 0 &&
+        terminalManagerCwdEntryMatchesTarget(currentEntry, target) &&
+        currentEntry?.nestedSsh
+      ) {
+        // One fast-poll grace sample avoids flicker during a brief relay hiccup.
+        return
+      }
+      updateTarget(target, { cwd: '', hostHint: null, nestedSsh: true })
+    }
+
+    const readTarget = async (target: TerminalManagerCwdTarget): Promise<void> => {
+      if (!parseAppSshPtyId(target.ptyId)) {
+        await readLegacyCwd(target)
+        return
+      }
+
+      const result = await window.api.pty.getTerminalLocation(target.ptyId)
+      if (!isCurrentTarget(target)) {
+        return
+      }
+      if (result.status === 'unsupported') {
+        unavailableMissesByTargetKeyRef.current.delete(terminalManagerCwdTargetKey(target))
+        try {
+          await readLegacyCwd(target)
+        } catch {
+          clearUnavailableDirectSshCwd(target)
         }
-        const next = { ...current }
-        delete next[target.tabId]
-        return next
+        return
+      }
+      if (result.status === 'unavailable' || result.probe.foreground.kind === 'unknown') {
+        recordUnavailableTarget(target)
+        return
+      }
+
+      unavailableMissesByTargetKeyRef.current.delete(terminalManagerCwdTargetKey(target))
+      const probe = result.probe
+      if (probe.foreground.kind === 'ssh') {
+        const nestedCwd = probe.nestedLocation?.cwd.trim() ?? ''
+        const nestedHost =
+          probe.nestedLocation?.host.trim() || probe.foreground.targetHint?.trim() || null
+        updateTarget(target, {
+          cwd: nestedCwd,
+          hostHint: nestedHost,
+          nestedSsh: true
+        })
+        return
+      }
+
+      updateTarget(target, {
+        cwd: probe.outerCwd?.trim() ?? '',
+        hostHint: null,
+        nestedSsh: false
       })
     }
 
     const startTarget = (target: TerminalManagerCwdTarget): void => {
-      const key = targetKey(target)
+      const key = terminalManagerCwdTargetKey(target)
       if (
         inFlightTargetsRef.current.has(key) ||
         inFlightTargetsRef.current.size >= TERMINAL_MANAGER_CWD_MAX_CONCURRENCY
@@ -103,32 +206,13 @@ export function useTerminalManagerSessionCwds(
         return
       }
       inFlightTargetsRef.current.add(key)
-      void window.api.pty
-        .getCwd(target.ptyId)
-        .then((value) => {
-          const cwd = value.trim()
-          if (!cwd) {
-            // Why: an unavailable SSH provider is not evidence that its last
-            // successful path is still current; let a newer OSC/static value win.
-            clearUnavailableDirectSshCwd(target)
-            return
-          }
-          if (
-            !mountedRef.current ||
-            currentPtyByTabIdRef.current.get(target.tabId) !== target.ptyId
-          ) {
-            return
-          }
-          setCwdByTabId((current) => {
-            const prior = current[target.tabId]
-            if (prior?.ptyId === target.ptyId && prior.cwd === cwd) {
-              return current
-            }
-            return { ...current, [target.tabId]: { ptyId: target.ptyId, cwd } }
-          })
-        })
+      void readTarget(target)
         .catch(() => {
-          clearUnavailableDirectSshCwd(target)
+          if (parseAppSshPtyId(target.ptyId)) {
+            recordUnavailableTarget(target)
+          } else {
+            clearUnavailableDirectSshCwd(target)
+          }
         })
         .finally(() => {
           inFlightTargetsRef.current.delete(key)
@@ -190,19 +274,47 @@ export function useTerminalManagerSessionCwds(
       run: refresh,
       intervalMs: TERMINAL_MANAGER_CWD_POLL_MS
     })
-    const activeSshTarget = eligibleTargets.find(
-      (target) => target.priority && parseAppSshPtyId(target.ptyId)
-    )
-    const stopActiveSshInterval = activeSshTarget
-      ? installWindowVisibilityInterval({
-          run: () => startTarget(activeSshTarget),
-          intervalMs: TERMINAL_MANAGER_ACTIVE_SSH_CWD_POLL_MS
-        })
-      : () => undefined
+    const directSshTargets = eligibleTargets.filter((target) => parseAppSshPtyId(target.ptyId))
+    const fastRefresh = (): void => {
+      if (initialDrainActive) {
+        drainInitialQueue()
+        return
+      }
+      const priorityTarget = directSshTargets.find((target) => target.priority)
+      if (priorityTarget) {
+        startTarget(priorityTarget)
+      }
+      const nestedTargets = directSshTargets.filter(
+        (target) =>
+          target !== priorityTarget &&
+          terminalManagerCwdEntryMatchesTarget(latestCwdByTabIdRef.current[target.tabId], target) &&
+          latestCwdByTabIdRef.current[target.tabId]?.nestedSsh
+      )
+      let inspected = 0
+      while (
+        nestedTargets.length > 0 &&
+        inFlightTargetsRef.current.size < TERMINAL_MANAGER_CWD_MAX_CONCURRENCY &&
+        inspected < nestedTargets.length
+      ) {
+        const target = nestedTargets[fastPollCursor % nestedTargets.length]
+        fastPollCursor = (fastPollCursor + 1) % nestedTargets.length
+        inspected += 1
+        if (target) {
+          startTarget(target)
+        }
+      }
+    }
+    const stopFastSshInterval =
+      directSshTargets.length > 0
+        ? installWindowVisibilityInterval({
+            run: fastRefresh,
+            intervalMs: TERMINAL_MANAGER_ACTIVE_SSH_CWD_POLL_MS
+          })
+        : () => undefined
     return () => {
       disposed = true
       stopInterval()
-      stopActiveSshInterval()
+      stopFastSshInterval()
       if (drainCurrentInitialQueueRef.current === drainInitialQueue) {
         drainCurrentInitialQueueRef.current = () => undefined
       }

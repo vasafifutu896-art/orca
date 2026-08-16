@@ -30,6 +30,7 @@ import { useTerminalManagerSelection } from './use-terminal-manager-selection'
 import { useTerminalManagerWorkingDirectories } from './use-terminal-manager-working-directories'
 import { resolveChecksPanelTerminalPtyId } from '../checks-panel-terminal-worktree'
 import {
+  formatTerminalManagerSessionHostChain,
   resolveTerminalManagerSessionHost,
   type TerminalManagerSessionLocation
 } from './terminal-manager-session-location'
@@ -95,7 +96,7 @@ export function TerminalManagerWorkspace({
     [sessions]
   )
   const [layout, setLayout] = useTerminalManagerLayout(worktreeId, sessionIds)
-  const workingDirectoryBySessionId = useTerminalManagerWorkingDirectories({
+  const observedLocationBySessionId = useTerminalManagerWorkingDirectories({
     activeTerminalTabId,
     layout,
     sessions,
@@ -104,20 +105,30 @@ export function TerminalManagerWorkspace({
   const locationBySessionId = useMemo<ReadonlyMap<string, TerminalManagerSessionLocation>>(
     () =>
       new Map(
-        sessions.map((session, index) => [
-          session.tab.id,
-          {
-            cwd: workingDirectoryBySessionId.get(session.tab.id) ?? null,
-            host: resolveTerminalManagerSessionHost({
-              executionHostId,
-              ptyId: sessionPtyIds[index] ?? null,
-              runtimeEnvironments,
-              runtimeSshTargets,
-              sshTargetHosts,
-              sshTargetLabels
-            })
-          }
-        ])
+        sessions.map((session, index) => {
+          const observedLocation = observedLocationBySessionId.get(session.tab.id)
+          const transportHost = resolveTerminalManagerSessionHost({
+            executionHostId,
+            ptyId: sessionPtyIds[index] ?? null,
+            runtimeEnvironments,
+            runtimeSshTargets,
+            sshTargetHosts,
+            sshTargetLabels
+          })
+          const reportedNestedHost = observedLocation?.nestedSsh
+            ? observedLocation.hostHint?.trim() || null
+            : null
+          return [
+            session.tab.id,
+            {
+              cwd: observedLocation?.cwd ?? null,
+              // Keep the trusted transport host visible beside any untrusted
+              // shell-reported nested hint. The hint never becomes routing or
+              // file authority, and a hostless inner shell stays truthful.
+              host: formatTerminalManagerSessionHostChain(transportHost, reportedNestedHost)
+            }
+          ] as const
+        })
       ),
     [
       executionHostId,
@@ -127,7 +138,7 @@ export function TerminalManagerWorkspace({
       sessions,
       sshTargetHosts,
       sshTargetLabels,
-      workingDirectoryBySessionId
+      observedLocationBySessionId
     ]
   )
   const visualSessionIds = useMemo(

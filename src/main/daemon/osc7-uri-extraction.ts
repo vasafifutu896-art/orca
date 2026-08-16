@@ -31,7 +31,10 @@ function parseOsc7At(data: string, index: number): Osc7ParseResult {
   return { kind: 'incomplete' }
 }
 
-export function scanOsc7Uris(data: string, onUri: (uri: string) => void): void {
+export function scanOsc7Uris(
+  data: string,
+  onUri: (uri: string, index: number, endIndex: number) => void
+): void {
   if (!data.includes(OSC7_PREFIX)) {
     return
   }
@@ -48,7 +51,7 @@ export function scanOsc7Uris(data: string, onUri: (uri: string) => void): void {
       break
     }
     if (parsed.kind === 'uri') {
-      onUri(parsed.uri)
+      onUri(parsed.uri, start, parsed.nextIndex)
       searchStart = parsed.nextIndex
       continue
     }
@@ -67,15 +70,14 @@ export function extractLastOsc7Uri(data: string): string | null {
 
 export function extractOscScanTail(input: string, limit: number): string {
   const lastOsc = input.lastIndexOf('\x1b]')
-  const lastEscape = input.endsWith('\x1b') ? input.length - 1 : -1
-  const start = Math.max(lastOsc, lastEscape)
-  if (start === -1) {
-    return ''
+  if (lastOsc !== -1) {
+    const oscSuffix = input.slice(lastOsc)
+    if (!oscSuffix.includes('\x07') && !oscSuffix.includes('\x1b\\')) {
+      // A final ESC may be the first half of this open OSC's ST terminator.
+      // Keep the whole bounded OSC, not only that ESC, across the chunk split.
+      return oscSuffix.slice(-limit)
+    }
   }
 
-  const suffix = input.slice(start)
-  if (suffix.includes('\x07') || suffix.includes('\x1b\\')) {
-    return ''
-  }
-  return suffix.slice(-limit)
+  return input.endsWith('\x1b') ? '\x1b' : ''
 }

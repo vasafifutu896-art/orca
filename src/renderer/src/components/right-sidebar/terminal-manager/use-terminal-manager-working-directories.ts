@@ -8,23 +8,22 @@ import { resolveChecksPanelTerminalPtyId } from '../checks-panel-terminal-worktr
 import {
   resolveTerminalManagerPaneKey,
   resolveTerminalManagerWorkingDirectory,
-  shouldPollTerminalManagerWorkingDirectory
+  shouldPollTerminalManagerWorkingDirectory,
+  type TerminalManagerCwdTarget,
+  type TerminalManagerObservedLocation
 } from './terminal-manager-session-cwd'
 import {
   sessionsForTerminalManagerGroup,
   type TerminalManagerLayout
 } from './terminal-manager-layout'
-import {
-  useTerminalManagerSessionCwds,
-  type TerminalManagerCwdTarget
-} from './use-terminal-manager-session-cwds'
+import { useTerminalManagerSessionCwds } from './use-terminal-manager-session-cwds'
 
 export function useTerminalManagerWorkingDirectories(args: {
   activeTerminalTabId: string | null
   layout: TerminalManagerLayout
   sessions: readonly WorktreeTerminalSession[]
   worktreePath: string | null
-}): ReadonlyMap<string, string | null> {
+}): ReadonlyMap<string, TerminalManagerObservedLocation> {
   const sessionPtyIds = useAppStore(
     useShallow((state) =>
       args.sessions.map(
@@ -49,6 +48,16 @@ export function useTerminalManagerWorkingDirectories(args: {
           layout: state.terminalLayoutsByTabId[session.tab.id]
         })
       )
+    )
+  )
+  const sessionSshConnectionGenerations = useAppStore(
+    useShallow((state) =>
+      sessionPtyIds.map((ptyId) => {
+        const parsed = ptyId ? parseAppSshPtyId(ptyId) : null
+        return parsed
+          ? (state.sshConnectionStates.get(parsed.connectionId)?.connectionGeneration ?? 0)
+          : null
+      })
     )
   )
   const paneCwdSnapshot = useTerminalPaneCwdSnapshot()
@@ -85,6 +94,9 @@ export function useTerminalManagerWorkingDirectories(args: {
           {
             tabId: session.tab.id,
             ptyId,
+            ...(directSsh
+              ? { connectionGeneration: sessionSshConnectionGenerations[index] ?? 0 }
+              : {}),
             priority: session.tab.id === args.activeTerminalTabId
           }
         ]
@@ -95,6 +107,7 @@ export function useTerminalManagerWorkingDirectories(args: {
       paneCwdSnapshot,
       sessionPaneKeys,
       sessionPtyIds,
+      sessionSshConnectionGenerations,
       visibleSessionIds
     ]
   )
@@ -102,29 +115,48 @@ export function useTerminalManagerWorkingDirectories(args: {
 
   return useMemo(
     () =>
-      new Map(
+      new Map<string, TerminalManagerObservedLocation>(
         args.sessions.map((session, index) => {
           const ptyId = sessionPtyIds[index] ?? null
           const paneKey = sessionPaneKeys[index]
           const paneEntry = paneKey ? paneCwdSnapshot[paneKey] : undefined
           const polledEntry = polledCwdBySessionId[session.tab.id]
           const directSsh = Boolean(ptyId && parseAppSshPtyId(ptyId))
+          const polledEntryMatches = Boolean(
+            polledEntry?.ptyId === ptyId &&
+            (!directSsh ||
+              polledEntry.connectionGeneration === (sessionSshConnectionGenerations[index] ?? 0))
+          )
+          if (directSsh && polledEntryMatches && typeof polledEntry?.nestedSsh === 'boolean') {
+            return [
+              session.tab.id,
+              {
+                cwd: polledEntry.cwd.trim() || null,
+                hostHint: polledEntry.hostHint?.trim() || null,
+                nestedSsh: polledEntry.nestedSsh
+              }
+            ] as const
+          }
           const liveEntry =
-            directSsh && polledEntry?.ptyId === ptyId
+            directSsh && polledEntryMatches
               ? polledEntry
               : paneEntry?.ptyId === ptyId && paneEntry.confirmed
                 ? paneEntry
-                : polledEntry?.ptyId === ptyId
+                : polledEntryMatches
                   ? polledEntry
                   : paneEntry
           return [
             session.tab.id,
-            resolveTerminalManagerWorkingDirectory({
-              liveEntry,
-              ptyId,
-              startupCwd: session.tab.startupCwd,
-              worktreePath: args.worktreePath
-            })
+            {
+              cwd: resolveTerminalManagerWorkingDirectory({
+                liveEntry,
+                ptyId,
+                startupCwd: session.tab.startupCwd,
+                worktreePath: args.worktreePath
+              }),
+              hostHint: null,
+              nestedSsh: false
+            }
           ] as const
         })
       ),
@@ -134,7 +166,8 @@ export function useTerminalManagerWorkingDirectories(args: {
       paneCwdSnapshot,
       polledCwdBySessionId,
       sessionPaneKeys,
-      sessionPtyIds
+      sessionPtyIds,
+      sessionSshConnectionGenerations
     ]
   )
 }

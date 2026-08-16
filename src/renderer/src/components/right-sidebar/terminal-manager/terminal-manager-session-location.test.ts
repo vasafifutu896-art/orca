@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { toAppSshPtyId } from '../../../../../shared/ssh-pty-id'
 import { toRemoteRuntimePtyId } from '@/runtime/runtime-terminal-stream'
 import {
+  formatTerminalManagerSessionHostChain,
   formatTerminalManagerSessionLocation,
   resolveTerminalManagerSessionHost
 } from './terminal-manager-session-location'
@@ -97,5 +98,16 @@ describe('terminal manager session location', () => {
     expect(
       formatTerminalManagerSessionLocation({ host: '203.0.113.42', cwd: '/srv/apps/noonoo' })
     ).toBe('203.0.113.42 · …/apps/noonoo')
+    expect(formatTerminalManagerSessionLocation({ host: null, cwd: null })).toBe('…')
+  })
+
+  it('keeps the trusted transport visible beside a reported nested host', () => {
+    expect(formatTerminalManagerSessionHostChain('203.0.113.42', '10.0.0.8')).toBe(
+      '203.0.113.42 → 10.0.0.8'
+    )
+    expect(formatTerminalManagerSessionHostChain('203.0.113.42', null)).toBe('203.0.113.42')
+    expect(formatTerminalManagerSessionHostChain('203.0.113.42', '203.0.113.42')).toBe(
+      '203.0.113.42'
+    )
   })
 })

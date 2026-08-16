@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   capturePtyProcessIdentity,
+  inspectPtyForegroundProcess,
   parseLinuxProcessStat,
   resolvePtyProcessCwd
 } from './pty-process-cwd'
@@ -216,6 +217,83 @@ describe('resolvePtyProcessCwd', () => {
       resolvePtyProcessCwd(100, undefined, { platform: 'darwin', readProcessCwd })
     ).resolves.toBe('')
     expect(readProcessCwd).not.toHaveBeenCalled()
+  })
+})
+
+describe('inspectPtyForegroundProcess', () => {
+  it('classifies a validated foreground OpenSSH process and extracts its target', () => {
+    const readProcessStat = vi
+      .fn()
+      .mockReturnValueOnce(ROOT)
+      .mockReturnValueOnce(FOREGROUND)
+      .mockReturnValueOnce(FOREGROUND)
+      .mockReturnValueOnce(ROOT)
+    const readProcessCommand = vi.fn(() => ({
+      executable: '/usr/bin/ssh',
+      argv: ['ssh', '-p', '2222', 'root@build-b']
+    }))
+
+    expect(
+      inspectPtyForegroundProcess(100, undefined, {
+        platform: 'linux',
+        readProcessCommand,
+        readProcessStat
+      })
+    ).toEqual({
+      kind: 'ssh',
+      epoch: '200:20',
+      targetHint: 'build-b'
+    })
+    expect(readProcessStat.mock.calls.map(([pid]) => pid)).toEqual([100, 200, 200, 100])
+    expect(readProcessCommand).toHaveBeenCalledWith(200)
+  })
+
+  it('classifies the root shell while it owns the PTY foreground group', () => {
+    const shell = { ...ROOT, pgrp: 100, tpgid: 100 }
+    expect(
+      inspectPtyForegroundProcess(100, undefined, {
+        platform: 'linux',
+        readProcessCommand: () => ({ executable: '/usr/bin/bash', argv: ['bash'] }),
+        readProcessStat: () => shell
+      })
+    ).toEqual({
+      kind: 'shell',
+      epoch: '100:10',
+      targetHint: null
+    })
+  })
+
+  it('fails closed across foreground PID reuse and process-group handoff races', () => {
+    const readProcessStat = vi
+      .fn()
+      .mockReturnValueOnce(ROOT)
+      .mockReturnValueOnce(FOREGROUND)
+      .mockReturnValueOnce({ ...FOREGROUND, startTime: '999' })
+      .mockReturnValueOnce({ ...ROOT, tpgid: 100 })
+
+    expect(
+      inspectPtyForegroundProcess(100, undefined, {
+        platform: 'linux',
+        readProcessCommand: () => ({ executable: '/usr/bin/ssh', argv: ['ssh', 'build-b'] }),
+        readProcessStat
+      })
+    ).toEqual({ kind: 'unknown', epoch: null, targetHint: null })
+  })
+
+  it('pins inspection to the captured PTY slave and supported platform', () => {
+    const identity = { slavePath: '/dev/pts/7', startTime: ROOT.startTime }
+    expect(
+      inspectPtyForegroundProcess(100, identity, {
+        platform: 'linux',
+        readProcessStat: () => ROOT,
+        readProcessTerminal: () => '/dev/pts/8'
+      })
+    ).toEqual({ kind: 'unknown', epoch: null, targetHint: null })
+    expect(inspectPtyForegroundProcess(100, identity, { platform: 'darwin' })).toEqual({
+      kind: 'unknown',
+      epoch: null,
+      targetHint: null
+    })
   })
 })
 

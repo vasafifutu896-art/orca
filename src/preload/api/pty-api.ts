@@ -16,6 +16,7 @@ import type { TerminalSideEffectBatch } from '../../shared/terminal-side-effect-
 import type { TerminalViewAttributes } from '../../shared/terminal-view-attributes'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { PtyManagementApi } from './pty-management-api'
+import type { PtyTerminalLocationReadResult } from '../../shared/pty-terminal-location'
 
 export type PtyApi = {
   spawn: (opts: {
@@ -113,6 +114,7 @@ export type PtyApi = {
   }>
   confirmForegroundProcess: (id: string) => Promise<string | null>
   getCwd: (id: string) => Promise<string>
+  getTerminalLocation: (id: string) => Promise<PtyTerminalLocationReadResult>
   getSize: (id: string) => Promise<{ cols: number; rows: number } | null>
   listSessions: () => Promise<PtyListedSession[]>
   getAuthoritativeBufferSnapshotCapabilities?: (

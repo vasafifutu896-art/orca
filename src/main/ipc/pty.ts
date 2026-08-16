@@ -47,6 +47,7 @@ import {
   type SleepingAgentLaunchConfig
 } from '../../shared/agent-session-resume'
 import type { ProjectExecutionRuntimeResolution } from '../../shared/project-execution-runtime'
+import type { PtyTerminalLocationReadResult } from '../../shared/pty-terminal-location'
 import {
   isWslShellName,
   resolveLocalWindowsTerminalRuntimeOptions
@@ -2412,6 +2413,7 @@ export function registerPtyHandlers(
   ipcMain.removeHandler('pty:inspectProcess')
   ipcMain.removeHandler('pty:confirmForegroundProcess')
   ipcMain.removeHandler('pty:getCwd')
+  ipcMain.removeHandler('pty:getTerminalLocation')
   ipcMain.removeHandler('pty:getSize')
   ipcMain.removeHandler('pty:getAuthoritativeBufferSnapshotCapabilities')
   ipcMain.removeHandler('pty:declarePendingPaneSerializer')
@@ -7750,6 +7752,21 @@ export function registerPtyHandlers(
       return ''
     }
   })
+
+  ipcMain.handle(
+    'pty:getTerminalLocation',
+    async (_event, args: { id: string }): Promise<PtyTerminalLocationReadResult> => {
+      try {
+        const getTerminalLocation = getProviderForPty(args.id).getTerminalLocation
+        return getTerminalLocation ? await getTerminalLocation(args.id) : { status: 'unsupported' }
+      } catch {
+        // Why: this is display-only evidence sampled on a timer. Provider
+        // absence, teardown races, and relay failures must stay fail-closed
+        // instead of rejecting across the renderer IPC boundary.
+        return { status: 'unavailable' }
+      }
+    }
+  )
 
   // Why: prefer the provider's APPLIED size over the requested ptySizes so the renderer's resume drift-check can spot a dropped resize; null means "cannot confirm" → re-forward once.
   ipcMain.handle(

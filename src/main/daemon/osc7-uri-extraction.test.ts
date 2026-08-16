@@ -24,6 +24,12 @@ describe('OSC-7 URI extraction', () => {
     expect(tail).toHaveLength(128)
   })
 
+  it('keeps an open OSC when the first ST byte ends the chunk', () => {
+    expect(extractOscScanTail('\x1b]7;file://build-b/srv/app\x1b', 128)).toBe(
+      '\x1b]7;file://build-b/srv/app\x1b'
+    )
+  })
+
   it('scans large pasted OSC-like output without regex iteration', () => {
     const execSpy = vi.spyOn(RegExp.prototype, 'exec')
     const data = `${'pasted \x1b]x;noise\x07 '.repeat(10_000)}\x1b]7;file:///repo\x07`

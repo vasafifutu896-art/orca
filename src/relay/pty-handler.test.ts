@@ -176,6 +176,7 @@ describe('PtyHandler', () => {
     expect(methods).toContain('pty.shutdown')
     expect(methods).toContain('pty.sendSignal')
     expect(methods).toContain('pty.getCwd')
+    expect(methods).toContain('pty.getTerminalLocation')
     expect(methods).toContain('pty.getInitialCwd')
     expect(methods).toContain('pty.clearBuffer')
     expect(methods).toContain('pty.hasChildProcesses')
@@ -290,6 +291,23 @@ describe('PtyHandler', () => {
     expect(result).toEqual({ id: 'pty-1', incarnationId: expect.any(String) })
     expect(mockPtySpawn).toHaveBeenCalled()
     expect(handler.activePtyCount).toBe(1)
+  })
+
+  it('returns a fail-closed structured terminal location sample', async () => {
+    const { id, incarnationId } = await spawnPty({ cwd: process.cwd() })
+
+    await expect(dispatcher.callRequest('pty.getTerminalLocation', { id })).resolves.toEqual({
+      incarnationId,
+      foreground: { kind: 'unknown', epoch: null, targetHint: null },
+      outerCwd: process.cwd(),
+      nestedLocation: null
+    })
+  })
+
+  it('rejects a structured terminal location request for a missing PTY', async () => {
+    await expect(
+      dispatcher.callRequest('pty.getTerminalLocation', { id: 'missing' })
+    ).rejects.toThrow('PTY "missing" not found')
   })
 
   it("does not forward Orca's own NODE_ENV into the spawned shell", async () => {

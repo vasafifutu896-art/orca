@@ -17,9 +17,16 @@ import {
 } from './pty-shell-utils'
 import {
   capturePtyProcessIdentity,
+  inspectPtyForegroundProcess,
   resolvePtyProcessCwd,
   type PtyProcessIdentity
 } from './pty-process-cwd'
+import type {
+  PtyTerminalForeground,
+  PtyTerminalLocationProbe
+} from '../shared/pty-terminal-location'
+import { UNKNOWN_PTY_TERMINAL_FOREGROUND } from '../shared/pty-terminal-location'
+import { PtyTerminalLocationTracker } from './pty-terminal-location-tracker'
 import { getRelayShellLaunchConfig } from './pty-shell-launch'
 import { DEFAULT_SSH_RELAY_GRACE_PERIOD_SECONDS } from '../shared/ssh-types'
 import { shouldUseShellReadyStartupDelivery } from '../shared/codex-startup-delivery'
@@ -169,6 +176,7 @@ type ManagedPty = {
   gracefulKillSent?: boolean
   startupIngress?: PtyStartupIngress
   startupIngressIntent?: ReturnType<typeof parsePtyStartupIngressIntent>
+  terminalLocationTracker?: PtyTerminalLocationTracker
   ownerBackend: PtyOwnerBackend
   agentSessionOwners?: AgentSessionOwnerBinding[]
 }
@@ -220,6 +228,15 @@ function finishPtyCreationOperations(operations: readonly (() => void)[]): void 
   for (let index = operations.length - 1; index >= 0; index--) {
     operations[index]()
   }
+}
+
+function terminalForegroundsEqual(
+  left: PtyTerminalForeground,
+  right: PtyTerminalForeground
+): boolean {
+  return (
+    left.kind === right.kind && left.epoch === right.epoch && left.targetHint === right.targetHint
+  )
 }
 
 function disposeManagedPty(managed: ManagedPty): void {
@@ -749,6 +766,7 @@ export class PtyHandler {
       onEmission: emitIngressData,
       ...(echoProbe ? { echoProbe } : {})
     })
+    managed.terminalLocationTracker ??= new PtyTerminalLocationTracker()
     const startup = managed.startupCommand
     if (startup?.waitForShellReady) {
       startup.promptProbe = createShellPromptReadinessProbe({
@@ -780,6 +798,14 @@ export class PtyHandler {
           } else {
             this.signalRendererShellReady(managed)
           }
+        }
+      }
+      if (data.length > 0 && managed.terminalLocationTracker?.shouldScan(data)) {
+        const outputSeq = (managed.startupIngress?.acceptedRawSequence ?? 0) + data.length
+        const foreground = inspectPtyForegroundProcess(managed.pty.pid, managed.processIdentity)
+        const observation = managed.terminalLocationTracker.scan(data, outputSeq, foreground)
+        if (observation) {
+          managed.terminalLocationTracker.bind(observation, foreground)
         }
       }
       managed.startupIngress?.accept(data)
@@ -855,6 +881,7 @@ export class PtyHandler {
     this.dispatcher.onRequest('pty.shutdown', (p) => this.shutdown(p))
     this.dispatcher.onRequest('pty.sendSignal', (p) => this.sendSignal(p))
     this.dispatcher.onRequest('pty.getCwd', (p) => this.getCwd(p))
+    this.dispatcher.onRequest('pty.getTerminalLocation', (p) => this.getTerminalLocation(p))
     this.dispatcher.onRequest('pty.getInitialCwd', (p) => this.getInitialCwd(p))
     this.dispatcher.onRequest('pty.getSize', (p) => this.getSize(p))
     this.dispatcher.onRequest('pty.clearBuffer', (p) => this.clearBuffer(p))
@@ -1946,6 +1973,39 @@ export class PtyHandler {
       throw new Error(`PTY "${id}" not found`)
     }
     return resolvePtyProcessCwd(managed.pty.pid, managed.processIdentity)
+  }
+
+  private async getTerminalLocation(
+    params: Record<string, unknown>
+  ): Promise<PtyTerminalLocationProbe> {
+    const id = params.id as string
+    const managed = this.ptys.get(id)
+    if (!managed || managed.disposed) {
+      throw new Error(`PTY "${id}" not found`)
+    }
+
+    const foregroundBefore = inspectPtyForegroundProcess(managed.pty.pid, managed.processIdentity)
+    const resolvedOuterCwd = await resolvePtyProcessCwd(managed.pty.pid, managed.processIdentity)
+    const foregroundAfter = inspectPtyForegroundProcess(managed.pty.pid, managed.processIdentity)
+
+    // A process-group handoff during the async cwd lookup makes the combined
+    // sample ambiguous. Return one fail-closed poll rather than pairing a cwd
+    // or nested observation with the wrong foreground incarnation.
+    if (!terminalForegroundsEqual(foregroundBefore, foregroundAfter)) {
+      return {
+        incarnationId: managed.incarnationId ?? null,
+        foreground: UNKNOWN_PTY_TERMINAL_FOREGROUND,
+        outerCwd: null,
+        nestedLocation: null
+      }
+    }
+
+    return {
+      incarnationId: managed.incarnationId ?? null,
+      foreground: foregroundAfter,
+      outerCwd: resolvedOuterCwd.trim() || null,
+      nestedLocation: managed.terminalLocationTracker?.nestedLocationFor(foregroundAfter) ?? null
+    }
   }
 
   private async getInitialCwd(params: Record<string, unknown>): Promise<string> {

@@ -6,7 +6,7 @@ import { formatTerminalManagerWorkingDirectory } from './terminal-manager-sessio
 
 export type TerminalManagerSessionLocation = {
   cwd: string | null
-  host: string
+  host: string | null
 }
 
 type HostResolverArgs = {
@@ -87,14 +87,26 @@ export function resolveTerminalManagerSessionHost(args: HostResolverArgs): strin
   return 'localhost'
 }
 
+export function formatTerminalManagerSessionHostChain(
+  transportHost: string,
+  reportedNestedHost: string | null
+): string {
+  const nestedHost = reportedNestedHost?.trim()
+  return nestedHost && nestedHost !== transportHost
+    ? `${transportHost} → ${nestedHost}`
+    : transportHost
+}
+
 export function formatTerminalManagerSessionLocation(
   location: TerminalManagerSessionLocation
 ): string {
-  return `${location.host} · ${formatTerminalManagerWorkingDirectory(location.cwd) ?? '…'}`
+  const cwd = formatTerminalManagerWorkingDirectory(location.cwd) ?? '…'
+  return location.host?.trim() ? `${location.host.trim()} · ${cwd}` : cwd
 }
 
 export function formatFullTerminalManagerSessionLocation(
   location: TerminalManagerSessionLocation
 ): string {
-  return `${location.host} · ${location.cwd?.trim() || '…'}`
+  const cwd = location.cwd?.trim() || '…'
+  return location.host?.trim() ? `${location.host.trim()} · ${cwd}` : cwd
 }

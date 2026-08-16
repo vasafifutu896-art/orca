@@ -2,9 +2,78 @@ import { resolveTerminalStartupCwd } from '../../../../../shared/terminal-startu
 import { isTerminalLeafId, makePaneKey, type PaneKey } from '../../../../../shared/stable-pane-id'
 import type { TerminalLayoutSnapshot } from '../../../../../shared/terminal-tab-types'
 
+export type TerminalManagerCwdTarget = {
+  tabId: string
+  ptyId: string
+  connectionGeneration?: number
+  priority?: boolean
+}
+
 export type TerminalManagerSessionCwdEntry = {
   ptyId: string
   cwd: string
+  /** Fences a relay PTY id that was reused by a later SSH connection. */
+  connectionGeneration?: number
+  /** Display-only hostname reported by a shell inside a nested SSH session. */
+  hostHint?: string | null
+  /** Prevents an outer-shell/static cwd from being presented as the nested shell cwd. */
+  nestedSsh?: boolean
+}
+
+export type TerminalManagerObservedLocation = {
+  cwd: string | null
+  hostHint: string | null
+  nestedSsh: boolean
+}
+
+type SerializedTerminalManagerCwdTarget = readonly [
+  tabId: string,
+  ptyId: string,
+  priority: boolean,
+  connectionGeneration: number | null
+]
+
+export function serializeTerminalManagerCwdTargets(
+  targets: readonly TerminalManagerCwdTarget[]
+): string {
+  return JSON.stringify(
+    targets.map(
+      ({ tabId, ptyId, priority, connectionGeneration }): SerializedTerminalManagerCwdTarget => [
+        tabId,
+        ptyId,
+        Boolean(priority),
+        connectionGeneration ?? null
+      ]
+    )
+  )
+}
+
+export function parseTerminalManagerCwdTargets(
+  serializedTargets: string
+): TerminalManagerCwdTarget[] {
+  return (JSON.parse(serializedTargets) as SerializedTerminalManagerCwdTarget[]).map(
+    ([tabId, ptyId, priority, connectionGeneration]) => ({
+      tabId,
+      ptyId,
+      priority,
+      ...(connectionGeneration === null ? {} : { connectionGeneration })
+    })
+  )
+}
+
+export function terminalManagerCwdTargetKey(target: TerminalManagerCwdTarget): string {
+  return `${target.tabId}\0${target.ptyId}\0${target.connectionGeneration ?? ''}`
+}
+
+export function terminalManagerCwdEntryMatchesTarget(
+  entry: TerminalManagerSessionCwdEntry | undefined,
+  target: TerminalManagerCwdTarget
+): boolean {
+  return Boolean(
+    entry &&
+    entry.ptyId === target.ptyId &&
+    (entry.connectionGeneration ?? null) === (target.connectionGeneration ?? null)
+  )
 }
 
 export function shouldPollTerminalManagerWorkingDirectory(args: {

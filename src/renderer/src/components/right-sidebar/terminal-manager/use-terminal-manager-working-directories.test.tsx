@@ -13,11 +13,23 @@ const PANE_KEY = makePaneKey('tab-1', LEAF_ID)
 
 const mocks = vi.hoisted(() => ({
   paneCwds: {} as TerminalPaneCwdRegistry.TerminalPaneCwdSnapshot,
-  polledCwds: {} as Readonly<Record<string, { ptyId: string; cwd: string }>>,
+  polledCwds: {} as Readonly<
+    Record<
+      string,
+      {
+        ptyId: string
+        cwd: string
+        connectionGeneration?: number
+        hostHint?: string | null
+        nestedSsh?: boolean
+      }
+    >
+  >,
   poll: vi.fn(),
   state: {
     ptyIdsByTabId: { 'tab-1': ['pty-1'] } as Record<string, string[]>,
     lastKnownRelayPtyIdByTabId: {} as Record<string, string>,
+    sshConnectionStates: new Map<string, { connectionGeneration?: number }>(),
     terminalLayoutsByTabId: {
       'tab-1': {
         root: null,
@@ -73,6 +85,7 @@ describe('useTerminalManagerWorkingDirectories', () => {
     mocks.poll.mockReset()
     mocks.state.ptyIdsByTabId = { 'tab-1': ['pty-1'] }
     mocks.state.lastKnownRelayPtyIdByTabId = {}
+    mocks.state.sshConnectionStates = new Map([['ssh-server', { connectionGeneration: 7 }]])
   })
 
   afterEach(cleanup)
@@ -91,7 +104,11 @@ describe('useTerminalManagerWorkingDirectories', () => {
       })
     )
 
-    expect(result.current.get('tab-1')).toBe('/repo/packages/api')
+    expect(result.current.get('tab-1')).toEqual({
+      cwd: '/repo/packages/api',
+      hostHint: null,
+      nestedSsh: false
+    })
     expect(mocks.poll).toHaveBeenLastCalledWith([])
   })
 
@@ -115,7 +132,7 @@ describe('useTerminalManagerWorkingDirectories', () => {
     expect(mocks.poll).toHaveBeenLastCalledWith([
       { tabId: 'tab-1', ptyId: 'pty-1', priority: true }
     ])
-    expect(view.result.current.get('tab-1')).toBe('/repo/live')
+    expect(view.result.current.get('tab-1')?.cwd).toBe('/repo/live')
 
     view.rerender({ layout: { ...visibleLayout, ungroupedCollapsed: true } })
     expect(mocks.poll).toHaveBeenLastCalledWith([])
@@ -135,7 +152,7 @@ describe('useTerminalManagerWorkingDirectories', () => {
       })
     )
 
-    expect(result.current.get('tab-1')).toBe('/repo/packages/api')
+    expect(result.current.get('tab-1')?.cwd).toBe('/repo/packages/api')
     expect(mocks.poll).toHaveBeenLastCalledWith([
       { tabId: 'tab-1', ptyId: 'pty-1', priority: true }
     ])
@@ -157,7 +174,7 @@ describe('useTerminalManagerWorkingDirectories', () => {
     expect(mocks.poll).toHaveBeenLastCalledWith([
       { tabId: 'tab-1', ptyId: 'pty-1', priority: true }
     ])
-    expect(result.current.get('tab-1')).toBe('/srv/noonoo')
+    expect(result.current.get('tab-1')?.cwd).toBe('/srv/noonoo')
   })
 
   it('refreshes a confirmed direct SSH cwd after the remote shell changes directories', () => {
@@ -181,7 +198,7 @@ describe('useTerminalManagerWorkingDirectories', () => {
       [PANE_KEY]: { ptyId: sshPtyId, cwd: '/srv/old', confirmed: true }
     }
     mocks.polledCwds = {
-      'tab-1': { ptyId: sshPtyId, cwd: '/srv/new' }
+      'tab-1': { ptyId: sshPtyId, cwd: '/srv/new', connectionGeneration: 7 }
     }
     const layout = createEmptyTerminalManagerLayout(['tab-1'])
     const { result } = renderHook(() =>
@@ -193,9 +210,174 @@ describe('useTerminalManagerWorkingDirectories', () => {
       })
     )
 
-    expect(result.current.get('tab-1')).toBe('/srv/new')
+    expect(result.current.get('tab-1')).toEqual({
+      cwd: '/srv/new',
+      hostHint: null,
+      nestedSsh: false
+    })
     expect(mocks.poll).toHaveBeenLastCalledWith([
-      { tabId: 'tab-1', ptyId: sshPtyId, priority: true }
+      { tabId: 'tab-1', ptyId: sshPtyId, connectionGeneration: 7, priority: true }
     ])
+  })
+
+  it('uses the nested SSH display location instead of the outer cwd', () => {
+    const sshPtyId = toAppSshPtyId('ssh-server', 'relay-pty-1')
+    const sshSessions = [{ ...sessions[0], tab: { ...sessions[0].tab, ptyId: sshPtyId } }]
+    mocks.state.ptyIdsByTabId = { 'tab-1': [sshPtyId] }
+    mocks.state.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: null,
+        activeLeafId: LEAF_ID,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [LEAF_ID]: sshPtyId }
+      }
+    }
+    mocks.paneCwds = {
+      [PANE_KEY]: { ptyId: sshPtyId, cwd: '/root', confirmed: true }
+    }
+    mocks.polledCwds = {
+      'tab-1': {
+        ptyId: sshPtyId,
+        cwd: '/home/test',
+        connectionGeneration: 7,
+        hostHint: 'inner.example',
+        nestedSsh: true
+      }
+    }
+    const { result } = renderHook(() =>
+      useTerminalManagerWorkingDirectories({
+        activeTerminalTabId: 'tab-1',
+        layout: createEmptyTerminalManagerLayout(['tab-1']),
+        sessions: sshSessions,
+        worktreePath: '/root'
+      })
+    )
+
+    expect(result.current.get('tab-1')).toEqual({
+      cwd: '/home/test',
+      hostHint: 'inner.example',
+      nestedSsh: true
+    })
+  })
+
+  it('does not substitute an outer or worktree cwd while nested SSH location is unknown', () => {
+    const sshPtyId = toAppSshPtyId('ssh-server', 'relay-pty-1')
+    const sshSessions = [{ ...sessions[0], tab: { ...sessions[0].tab, ptyId: sshPtyId } }]
+    mocks.state.ptyIdsByTabId = { 'tab-1': [sshPtyId] }
+    mocks.state.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: null,
+        activeLeafId: LEAF_ID,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [LEAF_ID]: sshPtyId }
+      }
+    }
+    mocks.paneCwds = {
+      [PANE_KEY]: { ptyId: sshPtyId, cwd: '/root', confirmed: true }
+    }
+    mocks.polledCwds = {
+      'tab-1': {
+        ptyId: sshPtyId,
+        cwd: '',
+        connectionGeneration: 7,
+        hostHint: 'inner.example',
+        nestedSsh: true
+      }
+    }
+    const { result } = renderHook(() =>
+      useTerminalManagerWorkingDirectories({
+        activeTerminalTabId: 'tab-1',
+        layout: createEmptyTerminalManagerLayout(['tab-1']),
+        sessions: sshSessions,
+        worktreePath: '/workspace'
+      })
+    )
+
+    expect(result.current.get('tab-1')).toEqual({
+      cwd: null,
+      hostHint: 'inner.example',
+      nestedSsh: true
+    })
+  })
+
+  it('does not substitute a startup cwd when the structured outer cwd is unknown', () => {
+    const sshPtyId = toAppSshPtyId('ssh-server', 'relay-pty-1')
+    const sshSessions = [{ ...sessions[0], tab: { ...sessions[0].tab, ptyId: sshPtyId } }]
+    mocks.state.ptyIdsByTabId = { 'tab-1': [sshPtyId] }
+    mocks.state.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: null,
+        activeLeafId: LEAF_ID,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [LEAF_ID]: sshPtyId }
+      }
+    }
+    mocks.paneCwds = {
+      [PANE_KEY]: { ptyId: sshPtyId, cwd: '/root', confirmed: true }
+    }
+    mocks.polledCwds = {
+      'tab-1': {
+        ptyId: sshPtyId,
+        cwd: '',
+        connectionGeneration: 7,
+        hostHint: null,
+        nestedSsh: false
+      }
+    }
+
+    const { result } = renderHook(() =>
+      useTerminalManagerWorkingDirectories({
+        activeTerminalTabId: 'tab-1',
+        layout: createEmptyTerminalManagerLayout(['tab-1']),
+        sessions: sshSessions,
+        worktreePath: '/workspace'
+      })
+    )
+
+    expect(result.current.get('tab-1')).toEqual({
+      cwd: null,
+      hostHint: null,
+      nestedSsh: false
+    })
+  })
+
+  it('rejects a polled SSH location after the connection generation changes', () => {
+    const sshPtyId = toAppSshPtyId('ssh-server', 'relay-pty-1')
+    const sshSessions = [{ ...sessions[0], tab: { ...sessions[0].tab, ptyId: sshPtyId } }]
+    mocks.state.ptyIdsByTabId = { 'tab-1': [sshPtyId] }
+    mocks.state.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: null,
+        activeLeafId: LEAF_ID,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [LEAF_ID]: sshPtyId }
+      }
+    }
+    mocks.polledCwds = {
+      'tab-1': {
+        ptyId: sshPtyId,
+        cwd: '/old-generation',
+        connectionGeneration: 7,
+        nestedSsh: false
+      }
+    }
+    const layout = createEmptyTerminalManagerLayout(['tab-1'])
+    const view = renderHook(() =>
+      useTerminalManagerWorkingDirectories({
+        activeTerminalTabId: 'tab-1',
+        layout,
+        sessions: sshSessions,
+        worktreePath: '/workspace'
+      })
+    )
+    expect(view.result.current.get('tab-1')?.cwd).toBe('/old-generation')
+
+    mocks.state.sshConnectionStates = new Map([['ssh-server', { connectionGeneration: 8 }]])
+    view.rerender()
+
+    expect(mocks.poll).toHaveBeenLastCalledWith([
+      { tabId: 'tab-1', ptyId: sshPtyId, connectionGeneration: 8, priority: true }
+    ])
+    expect(view.result.current.get('tab-1')?.cwd).toBe('/workspace')
   })
 })

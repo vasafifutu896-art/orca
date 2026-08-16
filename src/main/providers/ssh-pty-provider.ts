@@ -23,6 +23,7 @@ import { SshPtySpawnExitRaceTracker } from './ssh-pty-spawn-exit-race'
 import { SshAgentSessionCapabilities } from './ssh-agent-session-capabilities'
 import type { PtyProcessInspection } from './pty-process-inspection'
 import { SSH_SESSION_EXPIRED_ERROR } from './ssh-pty-errors'
+import { SshPtyTerminalLocationReader } from './ssh-pty-terminal-location'
 
 // Why: sequential relay teardown calls share one absolute budget; convert to the mux-relative timeout only at dispatch.
 function relayTimeoutOptions(deadlineMs: number | undefined): { timeoutMs: number } | undefined {
@@ -38,6 +39,7 @@ export class SshPtyProvider implements IPtyProvider {
   private readonly agentSessionCapabilities: SshAgentSessionCapabilities
   private spawnExitRaces = new SshPtySpawnExitRaceTracker()
   private readonly outputState: SshPtyProviderOutputState
+  private readonly terminalLocationReader: SshPtyTerminalLocationReader
 
   constructor(
     connectionId: string,
@@ -49,6 +51,7 @@ export class SshPtyProvider implements IPtyProvider {
     this.mux = mux
     this.agentSessionCapabilities = new SshAgentSessionCapabilities(mux)
     this.getAppliedSize = createSshPtyAppliedSizeReader(mux, connectionId)
+    this.terminalLocationReader = new SshPtyTerminalLocationReader(mux)
 
     this.outputState = new SshPtyProviderOutputState(providerGeneration, {
       mux,
@@ -236,6 +239,8 @@ export class SshPtyProvider implements IPtyProvider {
     const result = await this.mux.request('pty.getCwd', { id: this.toRelayPtyId(id) })
     return result as string
   }
+
+  getTerminalLocation = (id: string) => this.terminalLocationReader.read(this.toRelayPtyId(id))
 
   async getInitialCwd(id: string): Promise<string> {
     const result = await this.mux.request('pty.getInitialCwd', { id: this.toRelayPtyId(id) })
