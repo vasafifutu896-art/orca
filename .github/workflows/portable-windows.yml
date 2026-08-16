@@ -69,13 +69,16 @@ jobs:
           src/main/ipc/filesystem-import-ssh.test.ts
           src/main/ipc/filesystem-import-ssh-ops.test.ts
           src/main/ipc/filesystem-import-ssh-path-safety.test.ts
+          src/relay/pty-process-cwd.test.ts
           src/shared/native-file-drop.test.ts
           src/main/daemon/daemon-host-relocation.test.ts
           src/renderer/src/hooks/useIpcEvents.test.ts
           src/renderer/src/hooks/use-notification-activation-ready.test.ts
           src/renderer/src/components/right-sidebar/RemoteFileToolbar.test.tsx
           src/renderer/src/components/right-sidebar/terminal-manager/TerminalManagerSessionButton.test.tsx
+          src/renderer/src/components/right-sidebar/terminal-manager/terminal-manager-session-cwd.test.ts
           src/renderer/src/components/right-sidebar/terminal-manager/terminal-manager-session-location.test.ts
+          src/renderer/src/components/right-sidebar/terminal-manager/use-terminal-manager-session-cwds.test.tsx
           src/renderer/src/components/right-sidebar/terminal-manager/use-terminal-manager-working-directories.test.tsx
           src/renderer/src/components/right-sidebar/FileExplorer.test.tsx
           src/renderer/src/components/right-sidebar/file-explorer-directory-listing.test.ts

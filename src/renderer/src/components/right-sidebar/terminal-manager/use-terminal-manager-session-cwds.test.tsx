@@ -61,6 +61,64 @@ describe('useTerminalManagerSessionCwds', () => {
     expect(result.current['local-tab']?.cwd).toBe('/repo/packages/web')
   })
 
+  it('refreshes the active direct SSH cwd promptly while a command is running', async () => {
+    getCwdMock.mockResolvedValueOnce('/root').mockResolvedValue('/home/test')
+    const targets = [{ tabId: 'ssh-tab', ptyId: 'ssh:host-1@@remote-pty', priority: true }]
+    const { result } = renderHook(() => useTerminalManagerSessionCwds(targets))
+
+    await act(flushPromises)
+    expect(result.current['ssh-tab']?.cwd).toBe('/root')
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000)
+      await flushPromises()
+    })
+
+    expect(result.current['ssh-tab']?.cwd).toBe('/home/test')
+  })
+
+  it('stops the fast direct SSH refresh when the row is no longer visible', async () => {
+    getCwdMock.mockResolvedValue('/home/test')
+    const targets = [{ tabId: 'ssh-tab', ptyId: 'ssh:host-1@@remote-pty', priority: true }]
+    const view = renderHook(({ targets }) => useTerminalManagerSessionCwds(targets), {
+      initialProps: { targets }
+    })
+    await act(flushPromises)
+    expect(getCwdMock).toHaveBeenCalledTimes(1)
+
+    view.rerender({ targets: [] })
+    getCwdMock.mockClear()
+    await act(async () => {
+      vi.advanceTimersByTime(15_000)
+      await flushPromises()
+    })
+
+    expect(getCwdMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['empty', 'error'] as const)(
+    'drops a stale direct SSH poll result after an %s provider response',
+    async (failure) => {
+      getCwdMock.mockResolvedValueOnce('/srv/old')
+      if (failure === 'empty') {
+        getCwdMock.mockResolvedValue('')
+      } else {
+        getCwdMock.mockRejectedValue(new Error('relay unavailable'))
+      }
+      const targets = [{ tabId: 'ssh-tab', ptyId: 'ssh:host-1@@remote-pty', priority: true }]
+      const { result } = renderHook(() => useTerminalManagerSessionCwds(targets))
+      await act(flushPromises)
+      expect(result.current['ssh-tab']?.cwd).toBe('/srv/old')
+
+      await act(async () => {
+        vi.advanceTimersByTime(2_000)
+        await flushPromises()
+      })
+
+      expect(result.current['ssh-tab']).toBeUndefined()
+    }
+  )
+
   it('keeps a result scoped to its PTY across reconnects and skips runtime handles', async () => {
     getCwdMock.mockResolvedValue('/repo/old')
     const { result, rerender } = renderHook(

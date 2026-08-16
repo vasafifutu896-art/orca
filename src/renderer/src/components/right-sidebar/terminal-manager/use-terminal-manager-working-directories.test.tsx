@@ -2,6 +2,7 @@
 
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toAppSshPtyId } from '../../../../../shared/ssh-pty-id'
 import { makePaneKey } from '../../../../../shared/stable-pane-id'
 import type { WorktreeTerminalSession } from '../../sidebar/worktree-terminal-session-order'
 import type * as TerminalPaneCwdRegistry from '../../terminal-pane/terminal-pane-cwd-registry'
@@ -157,5 +158,44 @@ describe('useTerminalManagerWorkingDirectories', () => {
       { tabId: 'tab-1', ptyId: 'pty-1', priority: true }
     ])
     expect(result.current.get('tab-1')).toBe('/srv/noonoo')
+  })
+
+  it('refreshes a confirmed direct SSH cwd after the remote shell changes directories', () => {
+    const sshPtyId = toAppSshPtyId('ssh-server', 'relay-pty-1')
+    const sshSessions = [
+      {
+        ...sessions[0],
+        tab: { ...sessions[0].tab, ptyId: sshPtyId }
+      }
+    ]
+    mocks.state.ptyIdsByTabId = { 'tab-1': [sshPtyId] }
+    mocks.state.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: null,
+        activeLeafId: LEAF_ID,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [LEAF_ID]: sshPtyId }
+      }
+    }
+    mocks.paneCwds = {
+      [PANE_KEY]: { ptyId: sshPtyId, cwd: '/srv/old', confirmed: true }
+    }
+    mocks.polledCwds = {
+      'tab-1': { ptyId: sshPtyId, cwd: '/srv/new' }
+    }
+    const layout = createEmptyTerminalManagerLayout(['tab-1'])
+    const { result } = renderHook(() =>
+      useTerminalManagerWorkingDirectories({
+        activeTerminalTabId: 'tab-1',
+        layout,
+        sessions: sshSessions,
+        worktreePath: '/root'
+      })
+    )
+
+    expect(result.current.get('tab-1')).toBe('/srv/new')
+    expect(mocks.poll).toHaveBeenLastCalledWith([
+      { tabId: 'tab-1', ptyId: sshPtyId, priority: true }
+    ])
   })
 })

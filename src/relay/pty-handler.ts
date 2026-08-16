@@ -10,12 +10,16 @@ import type { RelayDispatcher, RequestContext } from './dispatcher'
 import {
   resolveDefaultShell,
   resolveDefaultCwd,
-  resolveProcessCwd,
   processHasChildren,
   getForegroundProcessName,
   isProcessAlive,
   listShellProfiles
 } from './pty-shell-utils'
+import {
+  capturePtyProcessIdentity,
+  resolvePtyProcessCwd,
+  type PtyProcessIdentity
+} from './pty-process-cwd'
 import { getRelayShellLaunchConfig } from './pty-shell-launch'
 import { DEFAULT_SSH_RELAY_GRACE_PERIOD_SECONDS } from '../shared/ssh-types'
 import { shouldUseShellReadyStartupDelivery } from '../shared/codex-startup-delivery'
@@ -135,6 +139,7 @@ type ManagedPty = {
   id: string
   incarnationId: string
   pty: IPty
+  processIdentity?: PtyProcessIdentity
   initialCwd: string
   /** Why a chunk deque: rebuilding a rolling 100KB string per PTY chunk copied the
    * whole window on every write once saturated. Readers are attach/adopt/revive only. */
@@ -715,6 +720,12 @@ export class PtyHandler {
 
   /** Wire onData/onExit listeners for a managed PTY and store it. */
   private wireAndStore(managed: ManagedPty): void {
+    // Why here instead of only in the normal spawn path: revived PTYs need the
+    // same PID-reuse and slave-device pin before they become queryable.
+    managed.processIdentity ??= capturePtyProcessIdentity(
+      managed.pty.pid,
+      readPtySlavePath(managed.pty)
+    )
     managed.physicalExit = new PhysicalExitTracker()
     this.ptys.set(managed.id, managed)
     // Why: a second announce covers any store whose admission window has already closed.
@@ -1934,7 +1945,7 @@ export class PtyHandler {
     if (!managed || managed.disposed) {
       throw new Error(`PTY "${id}" not found`)
     }
-    return resolveProcessCwd(managed.pty.pid, managed.initialCwd)
+    return resolvePtyProcessCwd(managed.pty.pid, managed.processIdentity)
   }
 
   private async getInitialCwd(params: Record<string, unknown>): Promise<string> {

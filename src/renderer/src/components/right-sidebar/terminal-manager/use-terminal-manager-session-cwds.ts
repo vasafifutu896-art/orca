@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { parseAppSshPtyId } from '../../../../../shared/ssh-pty-id'
 import { installWindowVisibilityInterval, isWindowVisible } from '@/lib/window-visibility-interval'
 import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
 import type { TerminalManagerSessionCwdEntry } from './terminal-manager-session-cwd'
 
 const TERMINAL_MANAGER_CWD_POLL_MS = 15_000
+const TERMINAL_MANAGER_ACTIVE_SSH_CWD_POLL_MS = 2_000
 const TERMINAL_MANAGER_CWD_MAX_CONCURRENCY = 2
 
 export type TerminalManagerCwdTarget = {
@@ -74,6 +76,24 @@ export function useTerminalManagerSessionCwds(
       .sort((left, right) => Number(Boolean(right.priority)) - Number(Boolean(left.priority)))
       .filter((target) => !inFlightTargetsRef.current.has(targetKey(target)))
 
+    const clearUnavailableDirectSshCwd = (target: TerminalManagerCwdTarget): void => {
+      if (
+        !parseAppSshPtyId(target.ptyId) ||
+        !mountedRef.current ||
+        currentPtyByTabIdRef.current.get(target.tabId) !== target.ptyId
+      ) {
+        return
+      }
+      setCwdByTabId((current) => {
+        if (current[target.tabId]?.ptyId !== target.ptyId) {
+          return current
+        }
+        const next = { ...current }
+        delete next[target.tabId]
+        return next
+      })
+    }
+
     const startTarget = (target: TerminalManagerCwdTarget): void => {
       const key = targetKey(target)
       if (
@@ -87,8 +107,13 @@ export function useTerminalManagerSessionCwds(
         .getCwd(target.ptyId)
         .then((value) => {
           const cwd = value.trim()
+          if (!cwd) {
+            // Why: an unavailable SSH provider is not evidence that its last
+            // successful path is still current; let a newer OSC/static value win.
+            clearUnavailableDirectSshCwd(target)
+            return
+          }
           if (
-            !cwd ||
             !mountedRef.current ||
             currentPtyByTabIdRef.current.get(target.tabId) !== target.ptyId
           ) {
@@ -103,7 +128,7 @@ export function useTerminalManagerSessionCwds(
           })
         })
         .catch(() => {
-          // Keep the last good CWD through a reconnect or provider error.
+          clearUnavailableDirectSshCwd(target)
         })
         .finally(() => {
           inFlightTargetsRef.current.delete(key)
@@ -165,9 +190,19 @@ export function useTerminalManagerSessionCwds(
       run: refresh,
       intervalMs: TERMINAL_MANAGER_CWD_POLL_MS
     })
+    const activeSshTarget = eligibleTargets.find(
+      (target) => target.priority && parseAppSshPtyId(target.ptyId)
+    )
+    const stopActiveSshInterval = activeSshTarget
+      ? installWindowVisibilityInterval({
+          run: () => startTarget(activeSshTarget),
+          intervalMs: TERMINAL_MANAGER_ACTIVE_SSH_CWD_POLL_MS
+        })
+      : () => undefined
     return () => {
       disposed = true
       stopInterval()
+      stopActiveSshInterval()
       if (drainCurrentInitialQueueRef.current === drainInitialQueue) {
         drainCurrentInitialQueueRef.current = () => undefined
       }

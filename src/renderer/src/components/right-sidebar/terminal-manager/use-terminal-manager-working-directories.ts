@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { parseAppSshPtyId } from '../../../../../shared/ssh-pty-id'
 import type { WorktreeTerminalSession } from '../../sidebar/worktree-terminal-session-order'
 import { useTerminalPaneCwdSnapshot } from '../../terminal-pane/terminal-pane-cwd-registry'
 import { useAppStore } from '@/store'
@@ -69,10 +70,11 @@ export function useTerminalManagerWorkingDirectories(args: {
         const ptyId = sessionPtyIds[index]
         const paneKey = sessionPaneKeys[index]
         const paneEntry = paneKey ? paneCwdSnapshot[paneKey] : undefined
+        const directSsh = Boolean(ptyId && parseAppSshPtyId(ptyId))
         if (
           !ptyId ||
           !shouldPollTerminalManagerWorkingDirectory({
-            confirmedPaneEntry: paneEntry,
+            confirmedPaneEntry: directSsh ? undefined : paneEntry,
             isVisible: visibleSessionIds.has(session.tab.id),
             ptyId
           })
@@ -106,12 +108,15 @@ export function useTerminalManagerWorkingDirectories(args: {
           const paneKey = sessionPaneKeys[index]
           const paneEntry = paneKey ? paneCwdSnapshot[paneKey] : undefined
           const polledEntry = polledCwdBySessionId[session.tab.id]
+          const directSsh = Boolean(ptyId && parseAppSshPtyId(ptyId))
           const liveEntry =
-            paneEntry?.ptyId === ptyId && paneEntry.confirmed
-              ? paneEntry
-              : polledEntry?.ptyId === ptyId
-                ? polledEntry
-                : paneEntry
+            directSsh && polledEntry?.ptyId === ptyId
+              ? polledEntry
+              : paneEntry?.ptyId === ptyId && paneEntry.confirmed
+                ? paneEntry
+                : polledEntry?.ptyId === ptyId
+                  ? polledEntry
+                  : paneEntry
           return [
             session.tab.id,
             resolveTerminalManagerWorkingDirectory({
