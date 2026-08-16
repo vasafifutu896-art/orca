@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { encodePowerShellCommand } from './powershell-osc133-bootstrap'
 import { resolveWindowsShellLaunchArgs } from './providers/windows-shell-args'
@@ -18,9 +18,13 @@ for (const shell of WINDOWS_POWERSHELLS) {
       (languageMode) => {
         const cwd = mkdtempSync(join(tmpdir(), 'orca-powershell-clm-'))
         try {
-          expect(runBootstrap(shell, languageMode, cwd)).toContain(
-            `mode=${languageMode};codexHome=${MANAGED_CODEX_HOME};orcaHome=${MANAGED_CODEX_HOME};startupCount=2;cwd=${cwd}`
+          const output = runBootstrap(shell, languageMode, cwd)
+          expect(output).toContain(
+            `mode=${languageMode};codexHome=${MANAGED_CODEX_HOME};orcaHome=${MANAGED_CODEX_HOME};startupCount=2;cwd=`
           )
+          const reportedCwd = /;cwd=([^;\r\n]+)/.exec(output)?.[1]
+          expect(reportedCwd).toBeTruthy()
+          expect(canonicalWindowsPath(reportedCwd ?? '')).toBe(canonicalWindowsPath(cwd))
         } finally {
           rmSync(cwd, { recursive: true, force: true })
         }
@@ -36,12 +40,31 @@ for (const shell of WINDOWS_POWERSHELLS) {
         const encodedPrompt = /;promptBase64=([A-Za-z0-9+/=]+)/.exec(output)?.[1]
         expect(encodedPrompt).toBeTruthy()
         const prompt = Buffer.from(encodedPrompt ?? '', 'base64').toString('utf8')
-        expect(prompt).toContain(`\u001b]7;${pathToFileURL(cwd).href}\u0007`)
+        const osc7Prefix = '\u001b]7;'
+        const osc7Start = prompt.indexOf(osc7Prefix)
+        const osc7End = prompt.indexOf('\u0007', osc7Start + osc7Prefix.length)
+        const cwdUri =
+          osc7Start !== -1 && osc7End > osc7Start
+            ? prompt.slice(osc7Start + osc7Prefix.length, osc7End)
+            : null
+        expect(cwdUri).toBeTruthy()
+        expect(cwdUri).toContain('%20folder')
+        expect(cwdUri).toContain('%ED%95%9C%EA%B8%80')
+        expect(canonicalWindowsPath(fileURLToPath(cwdUri ?? 'file:///'))).toBe(
+          canonicalWindowsPath(cwd)
+        )
       } finally {
         rmSync(root, { recursive: true, force: true })
       }
     })
   })
+}
+
+function canonicalWindowsPath(value: string): string {
+  return realpathSync
+    .native(value)
+    .replace(/^\\\\\?\\/, '')
+    .toLowerCase()
 }
 
 function runBootstrap(
