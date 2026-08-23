@@ -1,13 +1,14 @@
-name: Portable Windows build
+name: Windows installer and portable build
 
 on:
   workflow_dispatch:
   push:
     tags:
       - 'portable-*'
+      - 'task-build-*'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: portable-windows-${{ github.ref }}
@@ -15,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Windows portable artifacts
+    name: Build Windows installer and portable artifacts
     runs-on: windows-2022
     timeout-minutes: 45
     env:
@@ -101,6 +102,7 @@ jobs:
           config/scripts/build-windows-foreground-permission.test.mjs
           config/scripts/electron-builder-native-rebuild.test.mjs
           config/scripts/electron-builder-config.test.mjs
+          config/scripts/windows-delivery-workflow.test.mjs
 
       - name: Typecheck
         run: pnpm run typecheck
@@ -109,6 +111,22 @@ jobs:
         env:
           ORCA_REUSE_PREPARED_NATIVE_RUNTIME: '1'
         run: pnpm run build:win:portable
+
+      - name: Build Windows installer from packaged app
+        shell: pwsh
+        run: |
+          $prepackaged = (Resolve-Path 'dist/win-unpacked').Path
+          pnpm exec electron-builder `
+            --config config/electron-builder.config.cjs `
+            --win `
+            --publish never `
+            --prepackaged $prepackaged
+          if ($LASTEXITCODE -ne 0) {
+            throw 'electron-builder failed to create the Windows installer'
+          }
+          if (-not (Test-Path 'dist/orca-windows-setup.exe')) {
+            throw 'Missing Windows installer: dist/orca-windows-setup.exe'
+          }
 
       - name: Verify one-pass portable layout
         shell: pwsh
@@ -208,15 +226,32 @@ jobs:
           -TimeoutSec 90
           -OutputPath "dist/portable-startup-benchmark.json"
 
+      - name: Verify silent installer
+        shell: pwsh
+        run: |
+          $installer = (Resolve-Path 'dist/orca-windows-setup.exe').Path
+          $install = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            throw "Silent installer exited with code $($install.ExitCode)"
+          }
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs/Orca/Orca.exe'
+          if (-not (Test-Path $installed)) {
+            $installed = Join-Path $env:LOCALAPPDATA 'Programs/orca/Orca.exe'
+          }
+          if (-not (Test-Path $installed)) {
+            throw 'Silent installer completed without installing Orca.exe'
+          }
+
       - name: Verify artifacts and checksums
         shell: pwsh
         run: |
           foreach ($artifact in @(
+            'dist/orca-windows-setup.exe',
             'dist/orca-windows-portable.exe',
             'dist/orca-windows-portable-folder.zip'
           )) {
             if (-not (Test-Path $artifact)) {
-              throw "Missing portable artifact: $artifact"
+              throw "Missing Windows delivery artifact: $artifact"
             }
             $hash = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
             $checksumPath = "$artifact.sha256"
@@ -228,11 +263,13 @@ jobs:
             )
           }
 
-      - name: Upload portable artifacts
+      - name: Upload Windows delivery artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: orca-windows-portable-${{ github.run_id }}
+          name: orca-windows-delivery-${{ github.run_id }}
           path: |
+            dist/orca-windows-setup.exe
+            dist/orca-windows-setup.exe.sha256
             dist/orca-windows-portable.exe
             dist/orca-windows-portable.exe.sha256
             dist/orca-windows-portable-folder.zip
@@ -241,3 +278,84 @@ jobs:
           compression-level: 0
           retention-days: 30
           if-no-files-found: error
+
+      - name: Publish tagged GitHub prerelease
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $sourceCommit = (git rev-parse HEAD).Trim()
+          if ($env:RELEASE_TAG -match '^task-build-([0-9a-f]{12})$') {
+            if (-not $sourceCommit.StartsWith($Matches[1])) {
+              throw "Tag $env:RELEASE_TAG does not identify checked-out commit $sourceCommit"
+            }
+          } elseif ($env:RELEASE_TAG.StartsWith('task-build-')) {
+            throw "Invalid task handoff tag: $env:RELEASE_TAG"
+          }
+
+          $notesPath = Join-Path $env:RUNNER_TEMP 'windows-delivery-release-notes.md'
+          @"
+          Windows installer and portable builds from commit ``$sourceCommit``.
+
+          - ``orca-windows-setup.exe``: installable Windows build
+          - ``orca-windows-portable.exe``: single-file portable build
+          - ``orca-windows-portable-folder.zip``: faster folder-portable build
+
+          This feature-branch prerelease is unsigned and may show a Windows SmartScreen warning.
+          Verify downloads with the accompanying SHA256 files.
+          "@ | Set-Content -Path $notesPath -Encoding utf8
+
+          $releaseJson = gh release view $env:RELEASE_TAG --json isDraft 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG `
+              --verify-tag `
+              --draft `
+              --prerelease `
+              --title "Orca Windows installer + portable $env:RELEASE_TAG" `
+              --notes-file $notesPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create draft release $env:RELEASE_TAG"
+            }
+          }
+
+          $assets = @(
+            'dist/orca-windows-setup.exe',
+            'dist/orca-windows-setup.exe.sha256',
+            'dist/orca-windows-portable.exe',
+            'dist/orca-windows-portable.exe.sha256',
+            'dist/orca-windows-portable-folder.zip',
+            'dist/orca-windows-portable-folder.zip.sha256',
+            'dist/portable-startup-benchmark.json'
+          )
+          gh release upload $env:RELEASE_TAG @assets --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upload Windows delivery assets to $env:RELEASE_TAG"
+          }
+
+          $release = gh release view $env:RELEASE_TAG --json assets | ConvertFrom-Json
+          foreach ($asset in $assets) {
+            $name = Split-Path $asset -Leaf
+            $published = @($release.assets | Where-Object { $_.name -eq $name })
+            if ($published.Count -ne 1) {
+              throw "Release $env:RELEASE_TAG is missing $name"
+            }
+            if ([int64]$published[0].size -le 0) {
+              throw "Release asset $name is empty"
+            }
+            $localHash = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expectedDigest = "sha256:$localHash"
+            if ($published[0].digest -ne $expectedDigest) {
+              throw "Release asset digest mismatch for $name"
+            }
+          }
+
+          gh release edit $env:RELEASE_TAG `
+            --draft=false `
+            --prerelease `
+            --title "Orca Windows installer + portable $env:RELEASE_TAG" `
+            --notes-file $notesPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to publish verified release $env:RELEASE_TAG"
+          }

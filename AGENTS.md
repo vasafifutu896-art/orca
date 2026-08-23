@@ -76,5 +76,6 @@ Every task that changes the workspace must follow [`docs/reference/task-completi
 - Validate the affected scope, inspect the final diff, and stage only explicit task-owned paths.
 - Create one or more Conventional Commits, split by logical concern, before declaring the task complete.
 - Push the current branch to `origin` without force and verify that the remote branch contains the local commit.
-- End the final response with the branch, commit SHA(s), verification summary, documentation path, and clickable GitHub commit or branch link.
-- If authentication, remote divergence, validation failure, or another blocker prevents commit or push, do not claim completion; preserve the local work and report the exact blocker.
+- For every task that changes runnable Orca behavior or packaging, tag the final pushed commit with `task-build-<12-character-SHA>` and wait for the Windows delivery workflow to publish both `orca-windows-setup.exe` and `orca-windows-portable.exe` with SHA-256 files on one non-draft GitHub prerelease.
+- End the final response with the branch, commit SHA(s), verification summary, documentation path, GitHub commit or branch link, and direct release-asset links for both the Windows installer and portable executable. State whether the artifacts are signed.
+- If authentication, remote divergence, validation, packaging, checksum, upload, or release verification fails, do not claim completion or substitute an older build; preserve the work and report the exact blocker and Actions run link.

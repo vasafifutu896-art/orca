@@ -1,9 +1,9 @@
-# Task Completion and GitHub Handoff
+# Task Completion, Windows Artifacts, and GitHub Handoff
 
 This workflow makes each workspace-changing task reproducible, reviewable, and easy for the next
 developer or agent to continue. A task is not complete when the code only exists in the local
-worktree; completion includes durable documentation, validation, commits, a verified push, and
-clickable GitHub links.
+worktree; completion includes durable documentation, validation, commits, a verified push, Windows
+delivery artifacts when product behavior changed, and permanent GitHub links.
 
 ## Scope
 
@@ -11,7 +11,9 @@ Follow this workflow for every task that changes code, configuration, tests, doc
 generated project artifacts. Read-only investigations do not require an empty commit or a redundant
 handoff document, but their final response must clearly say that no workspace files changed.
 
-Do not create a pull request, release, tag, or force-push unless the user explicitly requests it.
+Do not create a pull request, production release, production tag, version bump, or force-push unless
+the user explicitly requests it. The per-task Windows handoff tag and prerelease required below are
+the only standing exceptions.
 
 ## Required Sequence
 
@@ -98,7 +100,47 @@ Authentication failure, protected-branch rejection, non-fast-forward rejection, 
 network failure means the push is incomplete. Preserve the commits locally and report the exact
 error and recovery command instead of claiming success.
 
-### 6. Final Response Contract
+### 6. Publish Windows Handoff Artifacts
+
+This step is mandatory when the task changes runnable Orca behavior, packaging, or bundled runtime
+content. A documentation-only or read-only task may skip it, but the final response must state why.
+
+1. Record the final pushed commit and confirm the worktree is clean. Never package an uncommitted
+   worktree or an earlier task's commit.
+2. Create one annotated tag named `task-build-<12-character-final-SHA>` at that exact commit and push
+   only that tag to `origin`. This tag and its prerelease are standing user-authorized handoff
+   artifacts, not a production version or release cut.
+   If the tag already exists, verify that it still resolves to the same full commit. Reuse its
+   complete verified prerelease, or rerun the workflow at that tag; never move or replace the tag.
+3. Wait for `.github/workflows/portable-windows.yml` to finish on Windows 2022. It must build and
+   validate all of these assets from the tagged commit:
+   - `orca-windows-setup.exe`;
+   - `orca-windows-setup.exe.sha256`;
+   - `orca-windows-portable.exe`;
+   - `orca-windows-portable.exe.sha256`.
+4. Publish the four required files on one non-draft GitHub prerelease for the tag. The folder-portable
+   ZIP, its checksum, and benchmark report may be included as additional assets.
+5. Verify all of the following before declaring completion:
+   - the tag resolves to the final pushed commit;
+   - the workflow concluded successfully;
+   - the prerelease is non-draft and every required asset is present and non-empty;
+   - GitHub's uploaded-asset digest matches the locally generated SHA-256 value;
+   - the installer and portable direct-download URLs resolve from the GitHub Release.
+6. Record the workflow run, prerelease, direct URLs, checksums, and signing status in the final
+   response. Feature-branch Windows builds are currently unsigned, so identify them as unsigned and
+   warn that Windows SmartScreen may appear.
+
+An Actions artifact is temporary and may require authentication; it is recovery evidence, not the
+user download. Only permanent GitHub Release asset URLs satisfy this handoff.
+
+Do not invoke the production `release-cut` workflow or increment Orca's product version solely to
+create task handoff files. Do not describe unsigned artifacts as signed.
+
+A failed or cancelled workflow, missing asset, checksum mismatch, stale source commit, draft
+release, or unreachable direct URL leaves the delivery incomplete. Preserve the pushed commits and
+report the failed run and exact step; never substitute binaries from a previous task.
+
+### 7. Final Response Contract
 
 The final response must be self-contained and include:
 
@@ -107,6 +149,8 @@ The final response must be self-contained and include:
 - tests and quality checks that passed, plus any checks that could not run;
 - clickable local link to the durable task record;
 - clickable GitHub commit link, and a branch link when useful;
+- direct GitHub Release links for the Windows installer, portable executable, and both checksums;
+- Actions run and prerelease links plus the artifact signing status;
 - known limitations or next steps that materially affect the user.
 
 Use this compact handoff format:
@@ -119,5 +163,7 @@ Completed: <outcome>
 - Verification: <commands/results>
 - Task record: [document](/absolute/worktree/path/to/document.md)
 - GitHub: [commit](https://github.com/<owner>/<repo>/commit/<sha>) · [branch](https://github.com/<owner>/<repo>/tree/<branch>)
+- Downloads: [Windows installer](https://github.com/<owner>/<repo>/releases/download/<tag>/orca-windows-setup.exe) ([SHA-256](https://github.com/<owner>/<repo>/releases/download/<tag>/orca-windows-setup.exe.sha256)) · [Windows portable](https://github.com/<owner>/<repo>/releases/download/<tag>/orca-windows-portable.exe) ([SHA-256](https://github.com/<owner>/<repo>/releases/download/<tag>/orca-windows-portable.exe.sha256))
+- Build: [Actions run](url) · [prerelease](url) · signing: `<status>`
 - Remaining: <none or explicit limitation>
 ```
