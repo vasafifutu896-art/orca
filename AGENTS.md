@@ -67,3 +67,14 @@ Source-control and review changes must consider GitLab and other supported git p
 ## GitHub CLI Usage
 
 Be mindful of the user's `gh` CLI API rate limit — batch requests where possible and avoid unnecessary calls. All code, commands, and scripts must be compatible with macOS, Linux, and Windows.
+
+## Task Completion, Documentation, and GitHub Handoff
+
+Every task that changes the workspace must follow [`docs/reference/task-completion-github-handoff.md`](./docs/reference/task-completion-github-handoff.md).
+
+- Create or update a durable task record that captures the change, verification, limitations, and useful next steps.
+- Validate the affected scope, inspect the final diff, and stage only explicit task-owned paths.
+- Create one or more Conventional Commits, split by logical concern, before declaring the task complete.
+- Push the current branch to `origin` without force and verify that the remote branch contains the local commit.
+- End the final response with the branch, commit SHA(s), verification summary, documentation path, and clickable GitHub commit or branch link.
+- If authentication, remote divergence, validation failure, or another blocker prevents commit or push, do not claim completion; preserve the local work and report the exact blocker.
