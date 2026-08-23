@@ -71,11 +71,16 @@ vi.mock('../providers/ssh-git-dispatch', () => ({
 }))
 
 const { registerSshPtyProvider } = await import('../ipc/pty')
+const { deployAndLaunchRelay } = await import('./ssh-relay-deploy')
+const { execCommand } = await import('./ssh-relay-deploy-helpers')
+const { getRemoteHostPlatform } = await import('./ssh-remote-platform')
 
 describe('SshRelaySession managed hooks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.ORCA_FEATURE_REMOTE_AGENT_HOOKS = '1'
+    muxRequestMock.mockReset()
+    muxRequestMock.mockResolvedValue([])
     openConsumerSessionMock.mockImplementation(async (_mux, options) => ({
       mode: 'legacy-fallback',
       clientInstanceId: options.clientInstanceId,
@@ -127,5 +132,62 @@ describe('SshRelaySession managed hooks', () => {
     expect(vi.mocked(registerSshPtyProvider).mock.invocationCallOrder[0]).toBeLessThan(
       muxRequestMock.mock.invocationCallOrder[managedIndex]
     )
+  })
+
+  it('starts independent provider preparation before remote root discovery settles', async () => {
+    let releaseRootDiscovery!: () => void
+    const rootDiscovery = new Promise<void>((resolve) => {
+      releaseRootDiscovery = resolve
+    })
+    muxRequestMock.mockImplementation(async (method: string) => {
+      if (method === 'git.listWorktrees') {
+        await rootDiscovery
+        return []
+      }
+      return { ok: true }
+    })
+    vi.mocked(execCommand).mockResolvedValue('')
+    vi.mocked(deployAndLaunchRelay).mockResolvedValueOnce({
+      transport: { write: vi.fn(), onData: vi.fn(), onClose: vi.fn() },
+      platform: 'linux-x64',
+      hostPlatform: getRemoteHostPlatform('linux-x64'),
+      remoteHome: '/home/orca',
+      remoteRelayDir: '/home/orca/.orca-remote/relay-v1',
+      nodePath: '/usr/bin/node',
+      sockPath: '/home/orca/.orca-remote/relay.sock'
+    })
+    const { mockStore, mockPortForward, getMainWindow } = createMockDeps()
+    vi.mocked(mockStore.getRepos).mockReturnValue([
+      { connectionId: 'target-1', path: '/srv/repo' } as never
+    ])
+    const connection = {
+      writeFile: vi.fn().mockResolvedValue(undefined)
+    } as unknown as SshConnection
+    const session = new SshRelaySession('target-1', getMainWindow, mockStore, mockPortForward)
+    const establish = session.establish(connection)
+    await vi.waitFor(() =>
+      expect(muxRequestMock).toHaveBeenCalledWith('git.listWorktrees', {
+        repoPath: '/srv/repo'
+      })
+    )
+
+    let assertionError: unknown
+    try {
+      expect(muxRequestMock).toHaveBeenCalledWith(
+        AGENT_HOOK_INSTALL_PLUGINS_METHOD,
+        expect.anything()
+      )
+      expect(execCommand).toHaveBeenCalled()
+      expect(registerSshPtyProvider).not.toHaveBeenCalled()
+    } catch (error) {
+      assertionError = error
+    } finally {
+      releaseRootDiscovery()
+    }
+    await establish
+    if (assertionError) {
+      throw assertionError
+    }
+    expect(registerSshPtyProvider).toHaveBeenCalledWith('target-1', expect.anything())
   })
 })

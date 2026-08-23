@@ -326,23 +326,31 @@ describe('SshRelaySession reconnect incarnation ordering', () => {
     }
   })
 
-  it('keeps the winning reconnect incarnation when a stale health check resolves last', async () => {
+  it('keeps the winning reconnect incarnation when a stale consumer handshake resolves last', async () => {
     const consumerInstanceId = '00000000-0000-4000-8000-000000000000'
     const initialIncarnation = '00000000-0000-4000-8000-000000000001'
     const winningIncarnation = '00000000-0000-4000-8000-000000000002'
     const staleIncarnation = '00000000-0000-4000-8000-000000000003'
-    let resolveStaleHealthCheck!: (value: unknown) => void
-    const staleHealthCheck = new Promise((resolve) => {
-      resolveStaleHealthCheck = resolve
+    let resolveStaleConsumerHandshake!: () => void
+    const staleConsumerHandshake = new Promise<void>((resolve) => {
+      resolveStaleConsumerHandshake = resolve
     })
-    let resolveHomeCalls = 0
-    muxRequestMock.mockImplementation((method: string) => {
-      if (method !== 'session.resolveHome') {
-        return Promise.resolve([])
-      }
-      resolveHomeCalls += 1
-      return resolveHomeCalls === 2 ? staleHealthCheck : Promise.resolve('/')
-    })
+    openConsumerSessionMock
+      .mockImplementationOnce(async (_mux, options) => ({
+        clientInstanceId: options.clientInstanceId,
+        clientGeneration: 1,
+        ownerGeneration: 1,
+        ownerLease: 'test-owner-lease'
+      }))
+      .mockImplementationOnce(async (_mux, options) => {
+        await staleConsumerHandshake
+        return {
+          clientInstanceId: options.clientInstanceId,
+          clientGeneration: 1,
+          ownerGeneration: 1,
+          ownerLease: 'test-owner-lease'
+        }
+      })
     vi.mocked(randomUUID)
       .mockReturnValueOnce(consumerInstanceId)
       .mockReturnValueOnce(initialIncarnation)
@@ -368,11 +376,11 @@ describe('SshRelaySession reconnect incarnation ordering', () => {
     await session.establish(mockConn)
 
     const staleReconnect = session.reconnect(mockConn)
-    await vi.waitFor(() => expect(resolveHomeCalls).toBe(2))
+    await vi.waitFor(() => expect(openConsumerSessionMock).toHaveBeenCalledTimes(2))
     await session.reconnect(mockConn)
     expect(session.getState()).toBe('ready')
 
-    resolveStaleHealthCheck('/')
+    resolveStaleConsumerHandshake()
     await staleReconnect
 
     const winningCliHandler = muxInstances[2]?.requestHandlers.get('orca.cli')

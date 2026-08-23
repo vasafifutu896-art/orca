@@ -569,13 +569,6 @@ export class SshRelaySession {
         throw new Error('Session disposed during establish')
       }
 
-      await mux.request('session.resolveHome', { path: '~' })
-      if (!verifyRelayAttempt(mux, isAttemptCurrent, 'home resolution')) {
-        if (!mux.isDisposed()) {
-          mux.dispose()
-        }
-        throw new Error('Session disposed during establish')
-      }
       const connectionIncarnation = randomUUID()
 
       const registered = await this.registerProviders(mux, shouldContinue, connectionIncarnation)
@@ -720,13 +713,6 @@ export class SshRelaySession {
         return
       }
 
-      await mux.request('session.resolveHome', { path: '~' })
-      if (!verifyRelayAttempt(mux, isAttemptCurrent, 'home resolution')) {
-        if (!mux.isDisposed()) {
-          mux.dispose()
-        }
-        return
-      }
       const connectionIncarnation = randomUUID()
 
       const registered = await this.registerProviders(mux, shouldContinue, connectionIncarnation)
@@ -982,26 +968,19 @@ export class SshRelaySession {
     shouldContinue: (() => boolean) | undefined,
     connectionIncarnation: string
   ): Promise<boolean> {
-    await this.registerRelayRoots(mux)
-    if (shouldContinue && !shouldContinue()) {
-      return false
-    }
-
-    await this.installPluginsOnRelay(mux)
-    if (shouldContinue && !shouldContinue()) {
-      return false
-    }
-
-    try {
-      await this.installRemoteOrcaCliLauncher()
-    } catch (error) {
-      // Why: on MaxSessions=1 remotes the relay holds the only slot, so this raw-connection install can fail — don't fail the whole connection.
-      console.warn(
-        `[ssh-relay-session] remote orca CLI launcher install failed for ${this.targetId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
-    }
+    // Why: these warm-connect prerequisites are independent; overlap their WAN round trips while keeping provider publication behind one barrier.
+    await Promise.all([
+      this.registerRelayRoots(mux),
+      this.installPluginsOnRelay(mux),
+      this.installRemoteOrcaCliLauncher(shouldContinue).catch((error) => {
+        // Why: on MaxSessions=1 remotes the relay holds the only slot, so this raw-connection install can fail — don't fail the whole connection.
+        console.warn(
+          `[ssh-relay-session] remote orca CLI launcher install failed for ${this.targetId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        )
+      })
+    ])
     if (shouldContinue && !shouldContinue()) {
       return false
     }
@@ -1154,6 +1133,7 @@ export class SshRelaySession {
     }
     let admission: SshPtyConsumerAdmission
     try {
+      // Why: owner admission already proves the relay answered an RPC (including legacy method-not-found fallback), so a second resolveHome health probe only delays warm connects.
       admission = await this.admitPtyConsumerOwner(mux, previousOwner, options, ownsAttempt)
     } catch (error) {
       if (
@@ -1328,8 +1308,8 @@ export class SshRelaySession {
     }
   }
 
-  private async installRemoteOrcaCliLauncher(): Promise<void> {
-    if (!this.remoteCliBridgeEnv) {
+  private async installRemoteOrcaCliLauncher(shouldContinue?: () => boolean): Promise<void> {
+    if (!this.remoteCliBridgeEnv || (shouldContinue && !shouldContinue())) {
       return
     }
     const { binDir, hostPlatform } = this.remoteCliBridgeEnv
@@ -1338,14 +1318,26 @@ export class SshRelaySession {
     await execCommand(conn, makeRemoteDirectoryCommand(hostPlatform, binDir), {
       wrapCommand: !isWindowsRemoteHost(hostPlatform)
     })
+    if (shouldContinue && !shouldContinue()) {
+      return
+    }
     if (typeof conn.writeFile === 'function') {
       for (const file of plan.files) {
+        if (shouldContinue && !shouldContinue()) {
+          return
+        }
         await conn.writeFile(file.path, file.contents, { hostPlatform })
       }
     } else {
+      if (shouldContinue && !shouldContinue()) {
+        return
+      }
       const sftp = await conn.sftp()
       try {
         for (const file of plan.files) {
+          if (shouldContinue && !shouldContinue()) {
+            return
+          }
           await new Promise<void>((resolve, reject) => {
             const ws = sftp.createWriteStream(file.path)
             sftp.once('error', reject)
@@ -1359,6 +1351,9 @@ export class SshRelaySession {
       }
     }
     for (const command of plan.postWriteCommands) {
+      if (shouldContinue && !shouldContinue()) {
+        return
+      }
       await execCommand(conn, command, { wrapCommand: !isWindowsRemoteHost(hostPlatform) })
     }
   }

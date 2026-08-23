@@ -204,6 +204,7 @@ describe('SshRelaySession', () => {
     expect(registerSshPtyProvider).toHaveBeenCalledWith('target-1', expect.anything())
     expect(registerSshFilesystemProvider).toHaveBeenCalledWith('target-1', expect.anything())
     expect(registerSshGitProvider).toHaveBeenCalledWith('target-1', expect.anything())
+    expect(muxRequestMock).not.toHaveBeenCalledWith('session.resolveHome', { path: '~' })
   })
 
   it('continues provider registration when the relay managed-hook request fails', async () => {
@@ -365,6 +366,7 @@ describe('SshRelaySession', () => {
     expect(unregisterSshFilesystemProvider).toHaveBeenCalledWith('target-1')
     expect(unregisterSshGitProvider).toHaveBeenCalledWith('target-1')
     expect(registerSshPtyProvider).toHaveBeenCalledWith('target-1', expect.anything())
+    expect(muxRequestMock).not.toHaveBeenCalledWith('session.resolveHome', { path: '~' })
   })
 
   it('compiles a native Windows Orca CLI bridge without a cmd.exe shim', async () => {
