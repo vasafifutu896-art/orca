@@ -299,6 +299,29 @@ describe('RelayDispatcher bounded-capacity degradation', () => {
     }
   })
 
+  it('spills durable cancellation proofs instead of restarting the reconnect loop', () => {
+    const primary = makeSaturatingClient(4 * 1024 * 1024)
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const bounded = new RelayDispatcher(primary.write, primary.options)
+    try {
+      const clientId = bounded.activeClientIds()[0]
+      for (let index = 0; index < DISPATCHER_CONTROL_QUEUE_MAX_FRAMES; index += 1) {
+        bounded.notifyClient(clientId, `control.${index}`)
+      }
+
+      bounded.notifyControl(
+        'pty.deliveryCanceled',
+        { id: 'pty-1', deliveryToken: 'old-token' },
+        { spillToProducer: true }
+      )
+
+      expect(primary.closes).toBe(0)
+    } finally {
+      stderr.mockRestore()
+      bounded.dispose()
+    }
+  })
+
   it('closes the client when pty.replay overflows the control queue', () => {
     const primary = makeSaturatingClient(65536)
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
@@ -380,6 +403,24 @@ describe('RelayDispatcher bounded-capacity degradation', () => {
       expect(response.error.code).toBe(RelayErrorCode.ResponseOverCapacity)
       expect(response.error.message).toBe('Relay response exceeded the bounded transport capacity')
     } finally {
+      bounded.dispose()
+    }
+  })
+
+  it('keeps the client open when concurrent replay responses fill the control lane', async () => {
+    const primary = makeSaturatingClient(4 * 1024 * 1024)
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const bounded = new RelayDispatcher(primary.write, primary.options)
+    try {
+      bounded.onRequest('pty.attach', async () => ({ replay: 'x'.repeat(400 * 1024) }))
+      for (let id = 1; id <= 3; id += 1) {
+        bounded.feed(encodeJsonRpcFrame({ jsonrpc: '2.0', id, method: 'pty.attach' }, id, 0))
+      }
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(primary.closes).toBe(0)
+    } finally {
+      stderr.mockRestore()
       bounded.dispose()
     }
   })

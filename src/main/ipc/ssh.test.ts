@@ -3479,13 +3479,13 @@ describe('SSH IPC handlers', () => {
       mockSshStore.getTarget.mockReturnValue(makeTarget(targetId))
       mockConnectionManager.connect.mockResolvedValue({})
       markConnected(targetId)
-      // Why: fail the first request after the consumer session opens, so establish() rejects with an
-      // owner lease already remembered — the state a retry must be able to resume from.
+      // Why: fail provider registration after the consumer session opens, so establish() rejects
+      // with an owner lease already remembered — the state a retry must be able to resume from.
       const openClientResponse = await mockMux.request('pty.openClient')
       mockMux.request.mockImplementationOnce(() => Promise.resolve(openClientResponse))
-      mockMux.request.mockImplementationOnce(() =>
-        Promise.reject(new Error('relay handshake aborted'))
-      )
+      const getRepos = vi.spyOn(mockStore, 'getRepos').mockImplementationOnce(() => {
+        throw new Error('relay handshake aborted')
+      })
       mockStore.markSshRemotePtyLeasesAsync.mockRejectedValueOnce(
         new Error('lease persistence failed')
       )
@@ -3511,6 +3511,7 @@ describe('SSH IPC handlers', () => {
           expect.anything()
         )
       } finally {
+        getRepos.mockRestore()
         warn.mockRestore()
       }
     })

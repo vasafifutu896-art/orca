@@ -615,7 +615,8 @@ describe('SshRelaySession data delivery', () => {
     expect(openConsumerSessionMock.mock.calls[0][1]).toMatchObject({
       outputFlowControl: { requestedWindowSu: 256 * 1024 }
     })
-    expect(deployAndLaunchRelay).toHaveBeenCalledWith(mockConn, undefined, undefined, 'target-1')
+    expect(deployAndLaunchRelay).toHaveBeenCalled()
+    expect(vi.mocked(deployAndLaunchRelay).mock.calls[0]?.[4]).toBeInstanceOf(AbortSignal)
     expect(notifyWithSettlementMock).toHaveBeenCalledWith('pty.ackData', batch, settled)
   })
 
@@ -633,14 +634,16 @@ describe('SshRelaySession data delivery', () => {
       mockConn,
       undefined,
       undefined,
-      'target-1'
+      'target-1',
+      expect.any(AbortSignal)
     )
     expect(deployAndLaunchRelay).toHaveBeenNthCalledWith(
       2,
       mockConn,
       undefined,
       undefined,
-      'target-1'
+      'target-1',
+      expect.any(AbortSignal)
     )
   })
 

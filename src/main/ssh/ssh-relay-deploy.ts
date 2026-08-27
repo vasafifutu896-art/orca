@@ -90,6 +90,11 @@ import {
   MAX_SSH_RELAY_GRACE_PERIOD_SECONDS,
   MIN_SSH_RELAY_GRACE_PERIOD_SECONDS
 } from '../../shared/ssh-types'
+import {
+  connectWindowsSshRelayEndpoint,
+  reconnectRememberedSshRelay,
+  rememberSshRelayReconnectHint
+} from './ssh-relay-reconnect-endpoint'
 
 export type RelayDeployResult = {
   transport: MultiplexerTransport
@@ -132,10 +137,16 @@ export async function deployAndLaunchRelay(
   conn: SshConnection,
   onProgress?: (status: string) => void,
   graceTimeSeconds?: number,
-  relayInstanceId?: string
+  relayInstanceId?: string,
+  signal?: AbortSignal
 ): Promise<RelayDeployResult> {
   let timeoutHandle: ReturnType<typeof setTimeout>
   const deployAbortController = new AbortController()
+  const abortFromCaller = (): void => deployAbortController.abort(signal?.reason)
+  signal?.addEventListener('abort', abortFromCaller, { once: true })
+  if (signal?.aborted) {
+    abortFromCaller()
+  }
   const timedOut = Symbol('relay-deploy-timeout')
   const deployment = deployAndLaunchRelayInner(
     conn,
@@ -158,6 +169,7 @@ export async function deployAndLaunchRelay(
     const outcome = await Promise.race([deployment, timeoutPromise])
     if (outcome !== timedOut) {
       if (outcome.status === 'fulfilled') {
+        rememberSshRelayReconnectHint(conn, relayInstanceId, outcome.result)
         return outcome.result
       }
       throw outcome.error
@@ -181,6 +193,7 @@ export async function deployAndLaunchRelay(
     throw timeoutError
   } finally {
     clearTimeout(timeoutHandle!)
+    signal?.removeEventListener('abort', abortFromCaller)
   }
 }
 
@@ -330,6 +343,12 @@ async function deployAndLaunchRelayInner(
   relayInstanceId?: string,
   deploySignal?: AbortSignal
 ): Promise<RelayDeployResult> {
+  const remembered = await reconnectRememberedSshRelay(conn, relayInstanceId, deploySignal)
+  if (remembered) {
+    onProgress?.('Reconnected to existing relay')
+    console.log('[ssh-relay] Reconnected directly to remembered relay endpoint')
+    return remembered
+  }
   while (true) {
     deploySignal?.throwIfAborted()
     try {
@@ -1632,7 +1651,7 @@ async function launchWindowsRelay(
   let launchOpts = opts
   if ((await probeWindowsRelayPipe(conn, hostPlatform, opts, signal)) === 'READY') {
     try {
-      const transport = await connectWindowsRelay(conn, hostPlatform, opts, signal)
+      const transport = await connectWindowsSshRelayEndpoint(conn, hostPlatform, opts, signal)
       await rememberWindowsActiveRelayEndpoint(
         conn,
         hostPlatform,
@@ -1664,7 +1683,7 @@ async function launchWindowsRelay(
     (await probeWindowsRelayPipe(conn, hostPlatform, launchOpts, signal)) === 'READY'
   ) {
     try {
-      const transport = await connectWindowsRelay(conn, hostPlatform, launchOpts, signal)
+      const transport = await connectWindowsSshRelayEndpoint(conn, hostPlatform, launchOpts, signal)
       await rememberWindowsActiveRelayEndpoint(
         conn,
         hostPlatform,
@@ -1724,7 +1743,7 @@ async function launchWindowsRelay(
       signal
     )
   ) {
-    const transport = await connectWindowsRelay(conn, hostPlatform, launchOpts, signal)
+    const transport = await connectWindowsSshRelayEndpoint(conn, hostPlatform, launchOpts, signal)
     await rememberWindowsActiveRelayEndpoint(
       conn,
       hostPlatform,
@@ -1749,45 +1768,6 @@ async function launchWindowsRelay(
     return '(could not read log)'
   })
   throw new Error(`Relay failed to start within ${POLL_TIMEOUT_MS / 1000}s. Log:\n${logOutput}`)
-}
-
-async function connectWindowsRelay(
-  conn: SshConnection,
-  hostPlatform: RemoteHostPlatform,
-  opts: {
-    remoteDir: string
-    nodePath: string
-    sockPath: string
-    credentialFile: string
-  },
-  signal?: AbortSignal
-): Promise<MultiplexerTransport> {
-  const channel = await conn.exec(
-    windowsRelayConnectCommand(
-      hostPlatform,
-      opts.nodePath,
-      opts.remoteDir,
-      opts.sockPath,
-      opts.credentialFile
-    ),
-    { wrapCommand: false, signal }
-  )
-  return waitForSentinel(channel, signal)
-}
-
-function windowsRelayConnectCommand(
-  hostPlatform: RemoteHostPlatform,
-  nodePath: string,
-  remoteDir: string,
-  sockPath: string,
-  credentialFile: string
-): string {
-  return commandWithNodePath(
-    hostPlatform,
-    nodePath,
-    remoteDir,
-    `& ${powerShellLiteral(nodePath)} relay.js --connect --sock-path ${powerShellLiteral(sockPath)} --credential-file ${powerShellLiteral(credentialFile)}`
-  )
 }
 
 function windowsRelayLaunchCommand(

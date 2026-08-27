@@ -773,30 +773,38 @@ describe('SshRelaySession', () => {
     expect(deployAndLaunchRelay).not.toHaveBeenCalled()
   })
 
-  it('overlapping reconnects cancel the stale one', async () => {
+  it('aborts the stale relay deployment when reconnects overlap', async () => {
     const { mockConn, mockStore, mockPortForward, getMainWindow } = createMockDeps()
     const session = new SshRelaySession('target-1', getMainWindow, mockStore, mockPortForward)
     await session.establish(mockConn)
 
-    // Why: make the first reconnect hang so the second one aborts it
-    let resolveFirst!: () => void
+    let rejectFirst!: (error: Error) => void
     vi.mocked(deployAndLaunchRelay).mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveFirst = () =>
-          resolve({
-            transport: { write: vi.fn(), onData: vi.fn(), onClose: vi.fn() },
-            platform: 'linux-x64' as const
-          })
+      new Promise((_resolve, reject) => {
+        rejectFirst = reject
       })
     )
     mockDeploySuccess()
 
     const firstReconnect = session.reconnect(mockConn)
-    const secondReconnect = session.reconnect(mockConn)
+    await vi.waitFor(() => expect(deployAndLaunchRelay).toHaveBeenCalledTimes(2))
+    const firstReconnectCall = vi.mocked(deployAndLaunchRelay).mock.calls.at(-1) as unknown[]
+    const firstSignal = firstReconnectCall[4] as AbortSignal | undefined
+    expect(firstSignal).toBeInstanceOf(AbortSignal)
+    firstSignal?.addEventListener(
+      'abort',
+      () => {
+        const error = new Error('SSH operation was cancelled')
+        error.name = 'AbortError'
+        rejectFirst(error)
+      },
+      { once: true }
+    )
 
-    resolveFirst()
+    const secondReconnect = session.reconnect(mockConn)
     await Promise.all([firstReconnect, secondReconnect])
 
+    expect(firstSignal?.aborted).toBe(true)
     expect(session.getState()).toBe('ready')
   })
 
@@ -806,7 +814,13 @@ describe('SshRelaySession', () => {
 
     await session.establish(mockConn, 600)
 
-    expect(deployAndLaunchRelay).toHaveBeenCalledWith(mockConn, undefined, 600, 'target-1')
+    expect(deployAndLaunchRelay).toHaveBeenCalledWith(
+      mockConn,
+      undefined,
+      600,
+      'target-1',
+      expect.any(AbortSignal)
+    )
   })
 
   it('restores the configured relay grace after establish', async () => {

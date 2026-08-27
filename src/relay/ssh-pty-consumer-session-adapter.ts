@@ -38,7 +38,11 @@ export class SshPtyConsumerSessionAdapter {
       (proof) =>
         dispatcher.notifyControl(
           'pty.deliveryCanceled',
-          proof as unknown as Record<string, unknown>
+          proof as unknown as Record<string, unknown>,
+          // Why: reconnect can retire many stale source deliveries at once. These proofs must not
+          // be dropped, but overflowing the control lane would close the new client and repeat the
+          // same cancellation burst forever, so use the bounded producer reserve as a spill lane.
+          { spillToProducer: true }
         ),
       onSourceCreditAvailable
     )

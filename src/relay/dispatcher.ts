@@ -18,7 +18,6 @@ import {
 import { ClientRequestAborts } from './client-request-aborts'
 import { MAX_TIMER_DELAY_MS, isSafeTimerDelayMs } from '../shared/timer-delay'
 import {
-  DISPATCHER_CONTROL_QUEUE_MAX_BYTES,
   DEFAULT_PRODUCER_QUEUE_MAX_BYTES,
   DispatcherClientWriter,
   type DispatcherWriterLane,
@@ -700,7 +699,11 @@ export class RelayDispatcher {
     )
   }
 
-  notifyControl(method: string, params?: Record<string, unknown>): void {
+  notifyControl(
+    method: string,
+    params?: Record<string, unknown>,
+    options: { spillToProducer?: boolean } = {}
+  ): void {
     if (this.disposed) {
       return
     }
@@ -715,7 +718,13 @@ export class RelayDispatcher {
     }
     const frame = this.prepareFrame(msg)
     for (const client of clients) {
-      if (!this.enqueuePreparedFrame(client, frame, 'control')) {
+      // Why: some durable recovery controls are naturally bursty after reconnect. Give those
+      // callers the bounded producer reserve before closing the socket and replaying the same burst.
+      const lane =
+        options.spillToProducer && !client.writer.canEnqueueControl(frame.frameBytes)
+          ? 'legacy-response'
+          : 'control'
+      if (!this.enqueuePreparedFrame(client, frame, lane)) {
         this.closeClient(
           client,
           new Error('Relay control publication capacity exceeded'),
@@ -1085,8 +1094,10 @@ export class RelayDispatcher {
       ...(error ? { error } : { result: result ?? null })
     }
     const frame = this.prepareFrame(msg)
-    const lane =
-      frame.frameBytes > DISPATCHER_CONTROL_QUEUE_MAX_BYTES ? 'legacy-response' : 'control'
+    // Why: reconnect can issue several pty.attach requests at once, and each response may carry
+    // scrollback. Spill a response to the bounded producer lane before the aggregate control queue
+    // overflows; killing the client here would replay the same burst on every reconnect.
+    const lane = client.writer.canEnqueueControl(frame.frameBytes) ? 'control' : 'legacy-response'
     const accepted = this.enqueuePreparedFrame(client, frame, lane, onSettled)
     if (accepted) {
       return true

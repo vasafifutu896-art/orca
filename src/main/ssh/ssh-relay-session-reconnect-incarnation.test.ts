@@ -260,19 +260,51 @@ describe('SshRelaySession reconnect incarnation ordering', () => {
       mockConn,
       undefined,
       undefined,
-      'target-1'
+      'target-1',
+      expect.any(AbortSignal)
     )
     expect(deployAndLaunchRelay).toHaveBeenNthCalledWith(
       2,
       mockConn,
       undefined,
       undefined,
-      'target-1'
+      'target-1',
+      expect.any(AbortSignal)
     )
     expect(openConsumerSessionMock).toHaveBeenCalledTimes(2)
     for (const [, options] of openConsumerSessionMock.mock.calls) {
       expect(options.outputFlowControl).toBeDefined()
     }
+  })
+
+  it('aborts an in-flight relay deployment when establish is disposed', async () => {
+    const { mockConn, mockStore, mockPortForward, getMainWindow } = createMockDeps()
+    let rejectDeploy!: (error: Error) => void
+    vi.mocked(deployAndLaunchRelay).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectDeploy = reject
+      })
+    )
+    const session = new SshRelaySession('target-1', getMainWindow, mockStore, mockPortForward)
+    const establishing = session.establish(mockConn)
+    await vi.waitFor(() => expect(deployAndLaunchRelay).toHaveBeenCalledOnce())
+    const signal = vi.mocked(deployAndLaunchRelay).mock.calls[0]?.[4]
+    expect(signal).toBeInstanceOf(AbortSignal)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        const error = new Error('SSH operation was cancelled')
+        error.name = 'AbortError'
+        rejectDeploy(error)
+      },
+      { once: true }
+    )
+    const failure = expect(establishing).rejects.toThrow('Session disposed during establish')
+
+    session.dispose()
+
+    await failure
+    expect(signal?.aborted).toBe(true)
   })
 
   it('rolls back a timed-out activation that resolves after its replacement commits', async () => {

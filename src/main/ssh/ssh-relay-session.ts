@@ -510,6 +510,8 @@ export class SshRelaySession {
     this.aiVaultListMethodSupported = null
     this.aiVaultTitleMethodSupported = null
     this.currentConnection = conn
+    const abortController = new AbortController()
+    this.abortController = abortController
 
     try {
       const {
@@ -521,7 +523,13 @@ export class SshRelaySession {
         sockPath,
         credentialFile,
         hostPlatform
-      } = await deployAndLaunchRelay(conn, undefined, graceTimeSeconds, this.targetId)
+      } = await deployAndLaunchRelay(
+        conn,
+        undefined,
+        graceTimeSeconds,
+        this.targetId,
+        abortController.signal
+      )
       this.hostPlatform = hostPlatform ?? null
       this.remoteCliBridgeEnv =
         remoteHome && remoteRelayDir && nodePath && sockPath && hostPlatform
@@ -622,7 +630,14 @@ export class SshRelaySession {
         )
         this._onTerminalRelayError?.(this.targetId, err)
       }
+      if (this.isDisposed()) {
+        throw new Error('Session disposed during establish', { cause: err })
+      }
       throw err
+    } finally {
+      if (this.abortController === abortController) {
+        this.abortController = null
+      }
     }
   }
 
@@ -660,7 +675,13 @@ export class SshRelaySession {
         sockPath,
         credentialFile,
         hostPlatform
-      } = await deployAndLaunchRelay(conn, undefined, graceTimeSeconds, this.targetId)
+      } = await deployAndLaunchRelay(
+        conn,
+        undefined,
+        graceTimeSeconds,
+        this.targetId,
+        abortController.signal
+      )
       this.hostPlatform = hostPlatform ?? null
       this.remoteCliBridgeEnv =
         remoteHome && remoteRelayDir && nodePath && sockPath && hostPlatform
@@ -752,6 +773,13 @@ export class SshRelaySession {
       this.startPortScanning()
       this._onReady?.(this.targetId)
     } catch (err) {
+      if (
+        this.abortController !== abortController ||
+        abortController.signal.aborted ||
+        this.isDisposed()
+      ) {
+        return
+      }
       // Why: tear down a partially-registered mux so its keepalive/timeout timers don't keep running on a half-initialized session.
       if (this.abortController === abortController && !this.isDisposed()) {
         this.teardownProviders(
